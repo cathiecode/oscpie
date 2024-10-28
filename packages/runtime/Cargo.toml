@@ -1,0 +1,11 @@
+[package]
+name = "oscpie_runtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+image = "0.25.2"
+oscpie_render = { path = "../render" }
+oscpie_app = { path = "../app" }
+miniquad = "0.4.5"

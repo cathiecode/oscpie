@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = [
+    "packages/render",
+    "packages/runtime",
+    "packages/app",
+    "packages/retree"
+]
