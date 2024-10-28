@@ -1,8 +1,10 @@
-use vtree::{Component, Renderer};
+use std::{rc::Rc, time::Duration};
+
 use map_macro::hash_map;
+use vtree::{MutableComponent, Renderer};
 
 mod microdom {
-    use std::collections::HashMap;
+    use std::{borrow::Borrow, collections::HashMap, rc::Rc};
 
     #[derive(Debug)]
     pub enum ElementType {
@@ -10,9 +12,7 @@ mod microdom {
         Span(HashMap<String, String>),
     }
 
-    impl ElementType {
-
-    }
+    impl ElementType {}
 
     impl ToString for ElementType {
         fn to_string(&self) -> String {
@@ -23,10 +23,11 @@ mod microdom {
         }
     }
 
-    fn string_tag_inner(tag: &str, attributes_map: &HashMap<String, String>) -> String{
-        let attributes_string = attributes_map.iter().map(|(name, value)| {
-            format!("{}=\"{}\"", name, value)
-        }).collect::<String>();
+    fn string_tag_inner(tag: &str, attributes_map: &HashMap<String, String>) -> String {
+        let attributes_string = attributes_map
+            .iter()
+            .map(|(name, value)| format!("{}=\"{}\"", name, value))
+            .collect::<String>();
 
         format!("{} {}", tag, attributes_string)
     }
@@ -35,7 +36,7 @@ mod microdom {
     pub enum NodeType<T> {
         Element {
             element_type: T,
-            children: Vec<Option<Node>>,
+            children: Vec<Rc<Option<Node>>>,
         },
         Text(String),
     }
@@ -54,8 +55,8 @@ mod microdom {
                     tag = element_type.to_string(),
                     children = children
                         .iter()
-                        .flat_map(|child| child)
-                        .map(|element| element.to_string())
+                        .flat_map(|child: &Rc<Option<Node>>| -> &Option<Node> { child.borrow() })
+                        .map(|element: &Node| element.to_string())
                         .collect::<String>()
                 ),
                 NodeType::Text(text) => text.clone(),
@@ -80,8 +81,7 @@ mod vtree {
 
     use std::any::Any;
     use std::fmt::Debug;
-
-    pub struct Context;
+    use std::rc::Rc;
 
     pub trait Component: 'static + Debug {
         type Props;
@@ -89,10 +89,22 @@ mod vtree {
         fn new() -> Self;
         fn render(
             &self,
-            ctx: &mut Context,
             props: &Self::Props,
             children: &Vec<Option<Node<Self::LiteralNode>>>,
         ) -> Node<Self::LiteralNode>;
+    }
+
+    pub trait MutableComponent: 'static + Debug {
+        type Props;
+        type Message;
+        type LiteralNode;
+        fn new() -> Self;
+        fn render(
+            &self,
+            props: &Self::Props,
+            children: &Vec<Option<Node<Self::LiteralNode>>>,
+        ) -> Node<Self::LiteralNode>;
+        fn on_message(&mut self, message: Self::Message);
     }
 
     // Propsの型を外で気にしたくないので隠す
@@ -100,7 +112,6 @@ mod vtree {
         type LiteralNode;
         fn render(
             &self,
-            ctx: &mut Context,
             props: &Box<dyn Any>,
             children: &Vec<Option<Node<Self::LiteralNode>>>,
         ) -> Node<Self::LiteralNode>;
@@ -114,18 +125,33 @@ mod vtree {
         type LiteralNode = T::LiteralNode;
         fn render(
             &self,
-            ctx: &mut Context,
             props: &Box<dyn Any>,
             children: &Vec<Option<Node<Self::LiteralNode>>>,
         ) -> Node<T::LiteralNode> {
-            (self as &T).render(ctx, props.downcast_ref::<T::Props>().unwrap(), children)
+            (self as &T).render(props.downcast_ref::<T::Props>().unwrap(), children)
+        }
+    }
+
+    pub trait ComponentFactory: Debug {
+        type LiteralNode;
+        fn factory() -> Box<dyn AnyComponent<LiteralNode = Self::LiteralNode>>;
+    }
+
+    impl<T> ComponentFactory for T
+    where
+        T: Component,
+        T::Props: 'static,
+    {
+        type LiteralNode = T::LiteralNode;
+        fn factory() -> Box<dyn AnyComponent<LiteralNode = Self::LiteralNode>> {
+            Box::new(T::new())
         }
     }
 
     #[derive(Debug)]
     pub enum NodeType<T> {
         Component {
-            component: Box<dyn AnyComponent<LiteralNode = T>>,
+            component: fn() -> Box<dyn AnyComponent<LiteralNode = T>>,
             props: Box<dyn Any>,
         },
         Raw(T),
@@ -146,7 +172,7 @@ mod vtree {
         {
             Node {
                 node_type: NodeType::Component {
-                    component: Box::new(T::new()),
+                    component: T::factory,
                     props: Box::new(props),
                 },
                 children,
@@ -162,45 +188,192 @@ mod vtree {
     }
 
     pub trait Renderer<L> {
-        fn new(initial: &Node<L>) -> Self;
-        fn diff(prev: &Node<L>, next: &Node<L>);
+        fn new(initial: Rc<Node<L>>) -> Self;
+        fn mount(&mut self);
     }
 }
 
 mod vtree_microdom {
+    use std::borrow::BorrowMut;
     use std::collections::HashMap;
+    use std::ops::DerefMut;
+    use std::rc::Rc;
+    use std::task::Context;
 
     use crate::microdom;
     use crate::vtree;
+    use crate::vtree::AnyComponent;
 
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     pub enum LiteralNode {
         Div(HashMap<String, String>),
         Span(HashMap<String, String>),
         Text(String),
     }
 
-    pub struct MicrodomRenderer;
+    struct InternalComponentNode<L> {
+        component: Box<dyn AnyComponent<LiteralNode = L>>,
+        vtree_node: Rc<vtree::Node<L>>,
+        rendered: Option<Rc<InternalNode<L>>>,
+    }
+
+    impl InternalComponentNode<LiteralNode> {
+        fn new(vtree_node: Rc<vtree::Node<LiteralNode>>) -> Self {
+            if let vtree::NodeType::Component { component, props: _ } = &vtree_node.node_type {
+                Self {
+                    component: component(),
+                    vtree_node,
+                    rendered: None,
+                }
+            } else {
+                panic!("InternalComponentNode must be created with NodeType::Component");
+            }
+        }
+        fn mount(&mut self) -> Rc<InternalNode<LiteralNode>> {
+            let rendered = if let vtree::NodeType::Component { component, props } = &self.vtree_node.node_type {
+                self.component.render(props, &self.vtree_node.children)
+            } else {
+                panic!("InternalComponentNode must be created with NodeType::Component");
+            };
+
+            self.rendered = Some(Rc::new(instantiate_internal_component(Rc::new(rendered))));
+
+            self.rendered.clone().unwrap()
+        }
+    }
+
+    struct InternalLiteralNode {
+        component: LiteralNode,
+        bind_to: Rc<microdom::Node>,
+        children: Vec<Option<Rc<InternalNode<LiteralNode>>>>, // children: InternalNode<L>
+    }
+
+    impl InternalLiteralNode {
+        fn new(vtree_node: Rc<vtree::Node<LiteralNode>>) -> Self {
+            if let vtree::NodeType::Raw(literal) = &vtree_node.node_type {
+                Self {
+                    component: literal.clone(),
+                    bind_to: Rc::new(microdom::Node {
+                        element_type: match literal {
+                            LiteralNode::Div(attributes) => microdom::NodeType::Element {
+                                element_type: microdom::ElementType::Div(attributes.clone()),
+                                children: vec![],
+                            },
+                            LiteralNode::Span(attributes) => microdom::NodeType::Element {
+                                element_type: microdom::ElementType::Span(attributes.clone()),
+                                children: vec![],
+                            },
+                            LiteralNode::Text(text) => microdom::NodeType::Text(text.clone()),
+                        },
+                    }),
+                    children: vec![],
+                }
+            } else {
+                panic!("InternalLiteralNode must be created with NodeType::Raw");
+            }
+        }
+
+        fn mount(&mut self) -> Rc<InternalNode<LiteralNode>> {
+            let children: Vec<Option<Rc<InternalNode<LiteralNode>>>> = self
+                .children
+                .iter_mut()
+                .map(|child| {
+                    if let Some(child) = child {
+                        Some(child.borrow_mut().mount())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            Rc::new(InternalNode::Literal(InternalLiteralNode {
+                component: self.component.clone(),
+                bind_to: self.bind_to.clone(),
+                children,
+            }))
+        }
+    }
+
+    enum InternalNode<L> {
+        Component(InternalComponentNode<L>),
+        Literal(InternalLiteralNode),
+    }
+
+    impl InternalNode<LiteralNode> {
+        fn mount(&mut self) -> Rc<InternalNode<LiteralNode>> {
+            match self {
+                InternalNode::Component(internal_component_node) => internal_component_node.mount(),
+                InternalNode::Literal(internal_literal_node) => internal_literal_node.mount(),
+            }
+        }
+    }
+
+    fn instantiate_internal_component(vtree_node: Rc<vtree::Node<LiteralNode>>) -> InternalNode<LiteralNode> {
+        match &vtree_node.node_type {
+            vtree::NodeType::Component { component, props } => {
+                InternalNode::Component(InternalComponentNode::new(vtree_node))
+            }
+            vtree::NodeType::Raw(literal) => InternalNode::Literal(InternalLiteralNode::new(vtree_node)),
+        }
+    }
+
+    /*fn convert_node<L>(
+        vtree_node: vtree::Node<L>,
+        bind_to: &Rc<microdom::Node>,
+    ) -> Option<InternalNode<L>> {
+        match vtree_node.node_type {
+            vtree::NodeType::Component { component, props } => {
+                Some(InternalNode::Component(InternalComponentNode {
+                    rendered: convert_node(component.render(&props, &vtree_node.children), bind_to)
+                        .map(|component| Box::new(component)),
+                    bind_to: bind_to.clone(),
+                    component,
+                }))
+            }
+            vtree::NodeType::Raw(literal) => Some(InternalNode::Literal(InternalLiteralNode {
+                children: vtree_node
+                    .children
+                    .into_iter()
+                    .map(|child| {
+                        if let Some(child) = child {
+                            convert_node(child);
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                bind_to: bind_to.clone(),
+                component: literal,
+            })),
+        }
+    }*/
+
+    pub struct MicrodomRenderer {
+        root: InternalNode<LiteralNode>,
+    }
 
     impl MicrodomRenderer {
-        pub fn render_oneshot(ctx: &mut vtree::Context, node: &vtree::Node<LiteralNode>) -> Option<microdom::Node> {
-                match &node.node_type {
+        /*pub fn render_oneshot(
+            ctx: &mut vtree::Context,
+            node: &vtree::Node<LiteralNode>,
+        ) -> Option<microdom::Node> {
+            match &node.node_type {
                 vtree::NodeType::Component { component, props } => {
-                    let node = component.render(ctx, props, &node.children);
+                    let node = component.render(props, &node.children);
                     Self::render_oneshot(ctx, &node)
                 }
                 vtree::NodeType::Raw(literal) => {
-                    let children: Vec<Option<microdom::Node>> = node
+                    let children: Vec<Rc<Option<microdom::Node>>> = node
                         .children
                         .iter()
                         .filter_map(|child| child.as_ref())
-                        .map(|child| Self::render_oneshot(ctx, child))
+                        .map(|child| Rc::new(Self::render_oneshot(ctx, child)))
                         .collect();
                     match literal {
                         LiteralNode::Div(attributes) => Some(microdom::Node {
                             element_type: microdom::NodeType::Element {
                                 element_type: microdom::ElementType::Div(attributes.clone()),
-                                children: children,
+                                children,
                             },
                         }),
                         LiteralNode::Span(attributes) => Some(microdom::Node {
@@ -215,21 +388,24 @@ mod vtree_microdom {
                     }
                 }
             }
-        }    
+        }*/
+
+        pub fn render(
+            node: Rc<vtree::Node<LiteralNode>>,
+        ) -> InternalNode<LiteralNode> {
+            instantiate_internal_component(node)
+        }
     }
 
     impl vtree::Renderer<LiteralNode> for MicrodomRenderer {
-        fn new(initial: &vtree::Node<LiteralNode>) -> Self {
-            let mut ctx = vtree::Context {};
-            println!("{}", (&Self::render_oneshot(&mut ctx, initial).unwrap()).to_string());
-
+        fn new(initial: Rc<vtree::Node<LiteralNode>>) -> Self {
             Self {
-
+                root: instantiate_internal_component(initial),
             }
         }
-    
-        fn diff(prev: &vtree::Node<LiteralNode>, next: &vtree::Node<LiteralNode>) {
-            todo!()
+
+        fn mount(&mut self) {
+            self.root.mount();
         }
     }
 }
@@ -247,12 +423,11 @@ impl vtree::Component for TestComponent {
 
     fn render(
         &self,
-        ctx: &mut vtree::Context,
         props: &Self::Props,
         children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
     ) -> vtree::Node<Self::LiteralNode> {
         vtree::Node::new_literal(
-            vtree_microdom::LiteralNode::Div(hash_map!{
+            vtree_microdom::LiteralNode::Div(hash_map! {
                 "class".to_string() => "no-block".to_string()
             }),
             vec![
@@ -274,38 +449,49 @@ impl vtree::Component for TestComponent {
 }
 
 #[derive(Debug)]
-struct App;
+struct App {
+    date: std::time::Instant,
+    seconds: u64,
+}
 
-impl vtree::Component for App {
+impl vtree::MutableComponent for App {
     type Props = ();
+    type Message = ();
     type LiteralNode = vtree_microdom::LiteralNode;
 
     fn new() -> Self {
-        todo!()
+        Self {
+            date: std::time::Instant::now(),
+            seconds: 0,
+        }
     }
 
     fn render(
         &self,
-        ctx: &mut vtree::Context,
         props: &Self::Props,
         children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
     ) -> vtree::Node<Self::LiteralNode> {
         vtree::Node::new::<TestComponent>("Hello, world! This is my first application! Please make sure that this text is rendered in moderate time.".to_string(), vec![])
+    }
+
+    fn on_message(&mut self, message: Self::Message) {
+        self.seconds = self.date.elapsed().as_secs();
     }
 }
 
 fn main() {
     let time = std::time::Instant::now();
 
-    let app = App;
-    let mut ctx = vtree::Context {};
+    let app = App::new();
 
-    let a = app.render(&mut ctx, &(), &vec![]);
-    vtree_microdom::MicrodomRenderer::new(&a);
+    let a = app.render(&(), &vec![]);
+    let mut renderer = vtree_microdom::MicrodomRenderer::new(Rc::new(a));
+
+    renderer.mount();
 
     println!("build: {:}ms", time.elapsed().as_micros() as f64 / 1000.0);
 
-    //println!("real vtree: {}", ((&b.unwrap()).to_string()));
+    // println!("real vtree: {}", ((&b.unwrap()).to_string()));
 
     println!("string: {:}ms", time.elapsed().as_micros() as f64 / 1000.0);
 }
