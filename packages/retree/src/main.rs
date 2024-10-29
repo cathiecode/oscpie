@@ -1,10 +1,10 @@
-use std::rc::Rc;
+use std::{borrow::Borrow, cell::RefCell, ops::BitAnd, rc::Rc};
 
 use map_macro::hash_map;
 use vtree::MutableComponent;
 
 mod microdom {
-    use std::{collections::HashMap, rc::Rc};
+    use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     #[derive(Debug)]
     pub enum ElementType {
@@ -29,14 +29,14 @@ mod microdom {
             .map(|(name, value)| format!("{}=\"{}\"", name, value))
             .collect::<String>();
 
-        format!("{} {}", tag, attributes_string)
+        format!("{}", tag)
     }
 
     #[derive(Debug)]
     pub enum NodeType<T> {
         Element {
             element_type: T,
-            children: Vec<Rc<Node>>,
+            children: Vec<Rc<RefCell<Node>>>,
         },
         Text(String),
     }
@@ -55,7 +55,7 @@ mod microdom {
                     tag = element_type.to_string(),
                     children = children
                         .iter()
-                        .map(|child: &Rc<Node>| { child.as_ref().to_string() })
+                        .map(|child: &Rc<RefCell<Node>>| { child.as_ref().borrow().to_string() })
                         .collect::<String>()
                 ),
                 NodeType::Text(text) => text.clone(),
@@ -68,7 +68,7 @@ mod microdom {
         pub element_type: NodeType<ElementType>,
     }
 
-    impl ToString for &Node {
+    impl ToString for Node {
         fn to_string(&self) -> String {
             self.element_type.to_string()
         }
@@ -85,9 +85,9 @@ mod vtree {
         type Props: Debug + Clone + 'static;
         type LiteralNode;
         fn new() -> Self;
-        fn render<'a>(
+        fn render(
             &self,
-            props: &'a Self::Props,
+            props: &Self::Props,
             children: &Vec<Option<Node<Self::LiteralNode>>>,
         ) -> Node<Self::LiteralNode>;
     }
@@ -222,6 +222,7 @@ mod vtree {
 mod vtree_microdom {
     use core::panic;
     use std::borrow::BorrowMut;
+    use std::cell::RefCell;
     use std::collections::HashMap;
     use std::rc::Rc;
     use std::vec;
@@ -261,7 +262,7 @@ mod vtree_microdom {
                 panic!("InternalComponentNode must be created with NodeType::Component");
             }
         }
-        fn mount(&mut self) -> Rc<microdom::Node> {
+        fn mount(&mut self) -> Rc<RefCell<microdom::Node>> {
             let rendered = if let vtree::NodeType::Component { component, props, clone_props: _} =
                 &self.vtree_node.node_type
             {
@@ -281,7 +282,7 @@ mod vtree_microdom {
     #[derive(Debug)]
     struct InternalLiteralNode {
         vtree_node: vtree::Node<LiteralNode>,
-        bind_to: Option<Rc<microdom::Node>>,
+        bind_to: Option<Rc<RefCell<microdom::Node>>>,
         children: Vec<Option<Rc<InternalNode<LiteralNode>>>>, // children: InternalNode<L>
     }
 
@@ -298,9 +299,9 @@ mod vtree_microdom {
             }
         }
 
-        fn mount(&mut self) -> Rc<microdom::Node> {
+        fn mount(&mut self) -> Rc<RefCell<microdom::Node>> {
             if let vtree::NodeType::Raw(literal_node) = &self.vtree_node.node_type {
-                let children: Vec<Rc<microdom::Node>> = self
+                let children: Vec<Rc<RefCell<microdom::Node>>> = self
                     .vtree_node
                     .children
                     .iter_mut()
@@ -313,7 +314,7 @@ mod vtree_microdom {
                     })
                     .collect();
 
-                self.bind_to = Some(Rc::new(microdom::Node {
+                self.bind_to = Some(Rc::new(RefCell::new(microdom::Node {
                     element_type: match literal_node {
                         LiteralNode::Div(attributes) => microdom::NodeType::Element {
                             element_type: microdom::ElementType::Div(attributes.clone()),
@@ -325,7 +326,7 @@ mod vtree_microdom {
                         },
                         LiteralNode::Text(text) => microdom::NodeType::Text(text.clone()),
                     },
-                }));
+                })));
 
                 self.bind_to.as_ref().unwrap().clone()
             } else {
@@ -341,7 +342,7 @@ mod vtree_microdom {
     }
 
     impl InternalNode<LiteralNode> {
-        fn mount(&mut self) -> Rc<microdom::Node> {
+        fn mount(&mut self) -> Rc<RefCell<microdom::Node>> {
             log::trace!("mounting {:?}", self);
             match self {
                 InternalNode::Component(internal_component_node) => internal_component_node.mount(),
@@ -384,11 +385,11 @@ mod vtree_microdom {
     #[derive(Debug)]
     pub struct MicrodomRenderer {
         root: InternalNode<LiteralNode>,
-        target: Rc<microdom::Node>,
+        target: Rc<RefCell<microdom::Node>>,
     }
 
     impl MicrodomRenderer {
-        pub fn new(initial: vtree::Node<LiteralNode>, target: Rc<microdom::Node>) -> Self {
+        pub fn new(initial: vtree::Node<LiteralNode>, target: Rc<RefCell<microdom::Node>>) -> Self {
             Self {
                 root: instantiate_internal_component(initial),
                 target,
@@ -398,9 +399,7 @@ mod vtree_microdom {
         pub fn mount(&mut self) {
             let result = self.root.mount();
 
-            let target_element = Rc::get_mut(&mut self.target).unwrap();
-
-            if let microdom::NodeType::Element { element_type, children } = &mut target_element.element_type {
+            if let microdom::NodeType::Element { element_type, children } = &mut self.target.as_ref().borrow_mut().element_type {
                 children.push(result);
             }
         }
@@ -445,6 +444,38 @@ impl vtree::Component for TestComponent {
     }
 }
 
+#[derive(Debug, Clone)]
+struct BiTreeProps {
+    depth: u32,
+}
+
+#[derive(Debug)]
+struct BiTree;
+
+impl vtree::Component for BiTree {
+    type Props = BiTreeProps;
+    type LiteralNode = vtree_microdom::LiteralNode;
+
+    fn new() -> Self {
+        BiTree
+    }
+
+    fn render(
+        &self,
+        props: &Self::Props,
+        children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
+    ) -> vtree::Node<Self::LiteralNode> {
+        if props.depth == 0 {
+            return vtree::Node::new_literal(vtree_microdom::LiteralNode::Div(hash_map! {}), vec![]);
+        }
+
+        vtree::Node::new_literal(vtree_microdom::LiteralNode::Div(hash_map! {}), vec![
+            Some(vtree::Node::new::<BiTree>(BiTreeProps {depth: props.depth - 1}, vec![])),
+            Some(vtree::Node::new::<BiTree>(BiTreeProps {depth: props.depth - 1}, vec![]))
+        ])
+    }
+}
+
 #[derive(Debug)]
 struct App {
     date: std::time::Instant,
@@ -468,7 +499,7 @@ impl vtree::MutableComponent for App {
         props: &Self::Props,
         children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
     ) -> vtree::Node<Self::LiteralNode> {
-        vtree::Node::new::<TestComponent>("Hello, world! This is my first application! Please make sure that this text is rendered in moderate time.".to_string(), vec![])
+        vtree::Node::new::<BiTree>(BiTreeProps {depth: 6}, vec![])
     }
 
     fn on_message(&mut self, message: Self::Message) {
@@ -477,39 +508,30 @@ impl vtree::MutableComponent for App {
 }
 
 fn main() {
-    simple_logger::init_with_level(log::Level::Trace).unwrap();
+    simple_logger::init_with_level(log::Level::Warn).unwrap();
 
     let time = std::time::Instant::now();
 
     let app = App::new();
 
-    let container = Rc::new(microdom::Node {
+    let container = Rc::new(RefCell::new(microdom::Node {
         element_type: microdom::NodeType::Element {
             element_type: microdom::ElementType::Div(hash_map! {
                 "id".to_string() => "app".to_string()
             }),
             children: vec![],
         },
-    });
+    }));
 
     let a = app.render(&(), &vec![]);
     let mut renderer = vtree_microdom::MicrodomRenderer::new(a, container.clone());
 
-    println!("{}", container.as_ref().to_string());
-
-    println!(
-        "render 1: {:}ms",
-        time.elapsed().as_micros() as f64 / 1000.0
-    );
-
     renderer.mount();
 
-    println!("mount: {:}ms", time.elapsed().as_micros() as f64 / 1000.0);
-
-    println!("{}", container.as_ref().to_string());
-
     println!(
-        "render 2: {:}ms",
+        "mount: {:}ms",
         time.elapsed().as_micros() as f64 / 1000.0
     );
+
+    println!("{}", container.as_ref().borrow().element_type.to_string());
 }
