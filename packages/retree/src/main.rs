@@ -112,7 +112,7 @@ mod vtree {
         type LiteralNode;
         fn render(
             &self,
-            props: &Box<dyn AnyProps>,
+            props: &Box<dyn Any>,
             children: &Vec<Option<Node<Self::LiteralNode>>>,
         ) -> Node<Self::LiteralNode>;
     }
@@ -125,7 +125,7 @@ mod vtree {
         type LiteralNode = T::LiteralNode;
         fn render(
             &self,
-            props: &Box<dyn AnyProps>,
+            props: &Box<dyn Any>,
             children: &Vec<Option<Node<Self::LiteralNode>>>,
         ) -> Node<T::LiteralNode> {
             log::trace!("expecting: {}", std::any::type_name::<T::Props>());
@@ -137,43 +137,39 @@ mod vtree {
 
     pub trait ComponentFactory: Debug {
         type LiteralNode;
+        type Props;
         fn factory() -> Box<dyn AnyComponent<LiteralNode = Self::LiteralNode>>;
+        fn clone_props(from: &Box<dyn Any>) -> Box<dyn Any>;
     }
 
     impl<T> ComponentFactory for T
     where
         T: Component,
-        T::Props: 'static,
+        T::Props: 'static + Clone,
     {
         type LiteralNode = T::LiteralNode;
+        type Props = T::Props;
+
         fn factory() -> Box<dyn AnyComponent<LiteralNode = Self::LiteralNode>> {
             Box::new(T::new())
         }
-    }
-
-    pub trait AnyProps: Debug + 'static {
-        fn clone_props(&self) -> Box<dyn AnyProps>;
-    }
-
-    impl<T> AnyProps for T
-    where
-        T: Clone + Debug + 'static,
-    {
-        fn clone_props(&self) -> Box<dyn AnyProps> {
-            Box::new((self as &T).clone())
+        
+        fn clone_props(from: &Box<dyn Any>) -> Box<dyn Any> {
+            Box::new(from.downcast_ref::<T::Props>().unwrap().clone())
         }
     }
 
     pub struct ComponentNode<T> {
         component: fn() -> Box<dyn AnyComponent<LiteralNode = T>>,
-        props: Box<dyn AnyProps>,
+        props: Box<dyn Any>,
     }
 
     #[derive(Debug)]
     pub enum NodeType<T> {
         Component {
             component: fn() -> Box<dyn AnyComponent<LiteralNode = T>>,
-            props: Box<dyn AnyProps>,
+            clone_props: fn(&Box<dyn Any>) -> Box<dyn Any>,
+            props: Box<dyn Any>,
         },
         Raw(T),
     }
@@ -181,10 +177,11 @@ mod vtree {
     impl<T> Clone for NodeType<T> {
         fn clone(&self) -> Self {
             match self {
-                NodeType::Component { component, props } => {
+                NodeType::Component { component, clone_props, props } => {
                     NodeType::Component {
                         component: *component,
-                        props: (*props).clone_props(),
+                        clone_props: *clone_props,
+                        props: clone_props(props),
                     }
                 }
                 NodeType::Raw(literal) => self.clone(),
@@ -208,6 +205,7 @@ mod vtree {
             Node {
                 node_type: NodeType::Component {
                     component: T::factory,
+                    clone_props: T::clone_props,
                     props: Box::new(props),
                 },
                 children,
@@ -256,6 +254,7 @@ mod vtree_microdom {
         fn new(vtree_node: vtree::Node<LiteralNode>) -> Self {
             if let vtree::NodeType::Component {
                 component,
+                clone_props: _,
                 props: _,
             } = &vtree_node.node_type
             {
@@ -269,7 +268,7 @@ mod vtree_microdom {
             }
         }
         fn mount(&mut self) -> Rc<microdom::Node> {
-            let rendered = if let vtree::NodeType::Component { component, props } =
+            let rendered = if let vtree::NodeType::Component { component, props, clone_props: _} =
                 &self.vtree_node.node_type
             {
                 self.component.render(props, &self.vtree_node.children)
@@ -380,6 +379,7 @@ mod vtree_microdom {
             vtree::NodeType::Component {
                 component: _,
                 props: _,
+                clone_props: _,
             } => InternalNode::Component(InternalComponentNode::new(vtree_node)),
             vtree::NodeType::Raw(_literal) => {
                 InternalNode::Literal(InternalLiteralNode::new(vtree_node))
