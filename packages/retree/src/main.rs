@@ -221,8 +221,10 @@ mod vtree {
 
 mod vtree_microdom {
     use core::panic;
+    use std::borrow::BorrowMut;
     use std::collections::HashMap;
     use std::rc::Rc;
+    use std::vec;
 
     use crate::microdom;
     use crate::vtree;
@@ -394,7 +396,13 @@ mod vtree_microdom {
         }
 
         pub fn mount(&mut self) {
-            self.target = self.root.mount();
+            let result = self.root.mount();
+
+            let target_element = Rc::get_mut(&mut self.target).unwrap();
+
+            if let microdom::NodeType::Element { element_type, children } = &mut target_element.element_type {
+                children.push(result);
+            }
         }
     }
 }
