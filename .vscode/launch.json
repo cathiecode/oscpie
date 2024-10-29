@@ -61,6 +61,24 @@
             },
             "args": [],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'retree'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=retree",
+                    "--package=retree"
+                ],
+                "filter": {
+                    "name": "retree",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

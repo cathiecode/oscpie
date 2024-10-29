@@ -1,11 +1,10 @@
 use std::rc::Rc;
 
 use map_macro::hash_map;
-use simple_logger::SimpleLogger;
 use vtree::MutableComponent;
 
 mod microdom {
-    use std::{borrow::Borrow, collections::HashMap, rc::Rc};
+    use std::{collections::HashMap, rc::Rc};
 
     #[derive(Debug)]
     pub enum ElementType {
@@ -81,7 +80,6 @@ mod vtree {
 
     use std::any::Any;
     use std::fmt::Debug;
-    use std::rc::Rc;
 
     pub trait Component: 'static + Debug {
         type Props: Debug + Clone + 'static;
@@ -130,7 +128,7 @@ mod vtree {
         ) -> Node<T::LiteralNode> {
             log::trace!("expecting: {}", std::any::type_name::<T::Props>());
             log::trace!("got: {}", std::any::type_name_of_val(&*props));
-            let new_props = (&*props as &dyn Any).downcast_ref::<T::Props>().unwrap();
+            let new_props = props.downcast_ref::<T::Props>().unwrap();
             (self as &T).render(new_props, children)
         }
     }
@@ -159,11 +157,6 @@ mod vtree {
         }
     }
 
-    pub struct ComponentNode<T> {
-        component: fn() -> Box<dyn AnyComponent<LiteralNode = T>>,
-        props: Box<dyn Any>,
-    }
-
     #[derive(Debug)]
     pub enum NodeType<T> {
         Component {
@@ -174,7 +167,7 @@ mod vtree {
         Raw(T),
     }
 
-    impl<T> Clone for NodeType<T> {
+    impl<T> Clone for NodeType<T> where T: Clone {
         fn clone(&self) -> Self {
             match self {
                 NodeType::Component { component, clone_props, props } => {
@@ -184,7 +177,7 @@ mod vtree {
                         props: clone_props(props),
                     }
                 }
-                NodeType::Raw(literal) => self.clone(),
+                NodeType::Raw(literal) => NodeType::Raw(literal.clone()),
             }
         }
     }
@@ -229,7 +222,6 @@ mod vtree {
 mod vtree_microdom {
     use core::panic;
     use std::collections::HashMap;
-    use std::fmt::Pointer;
     use std::rc::Rc;
 
     use crate::microdom;
