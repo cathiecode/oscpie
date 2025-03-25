@@ -1,15 +1,19 @@
-use std::{borrow::Borrow, cell::RefCell, ops::BitAnd, rc::Rc};
+use std::{borrow::Borrow, cell::RefCell, collections::HashMap, ops::BitAnd, rc::Rc};
 
 use map_macro::hash_map;
-use vtree::MutableComponent;
+use vtree::Component;
 
 mod microdom {
-    use std::{cell::RefCell, collections::HashMap, rc::Rc};
+    use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
+
+    use downcast::{downcast, Any};
+    use dyn_clone::{clone_trait_object, DynClone};
 
     #[derive(Debug)]
     pub enum ElementType {
         Div(HashMap<String, String>),
         Span(HashMap<String, String>),
+        Button(u64),
     }
 
     impl ElementType {}
@@ -19,6 +23,7 @@ mod microdom {
             match self {
                 ElementType::Div(attributes) => string_tag_inner("div", attributes),
                 ElementType::Span(attributes) => string_tag_inner("span", attributes),
+                ElementType::Button(message) => format!("button onclick=\"{:?}\"", message),
             }
         }
     }
@@ -81,7 +86,7 @@ mod vtree {
     use std::any::Any;
     use std::fmt::Debug;
 
-    pub trait Component: 'static + Debug {
+    pub trait StaticComponent: 'static + Debug {
         type Props: Debug + Clone + 'static;
         type LiteralNode;
         fn new() -> Self;
@@ -92,8 +97,8 @@ mod vtree {
         ) -> Node<Self::LiteralNode>;
     }
 
-    pub trait MutableComponent: 'static + Debug {
-        type Props;
+    pub trait Component: 'static + Debug {
+        type Props: Debug + Clone + 'static;
         type Message;
         type LiteralNode;
         fn new() -> Self;
@@ -102,7 +107,33 @@ mod vtree {
             props: &Self::Props,
             children: &Vec<Option<Node<Self::LiteralNode>>>,
         ) -> Node<Self::LiteralNode>;
-        fn on_message(&mut self, message: Self::Message);
+        fn on_message(&mut self, message: &Self::Message) {}
+        fn on_message_any(&mut self, message: Box<dyn Any>) {
+            if let Some(message) = message.downcast_ref::<Self::Message>() {
+                self.on_message(message);
+            }
+        }
+    }
+
+    impl<T> Component for T
+    where
+        T: StaticComponent,
+    {
+        type Props = T::Props;
+        type Message = ();
+        type LiteralNode = T::LiteralNode;
+
+        fn new() -> Self {
+            T::new()
+        }
+
+        fn render(
+            &self,
+            props: &Self::Props,
+            children: &Vec<Option<Node<Self::LiteralNode>>>,
+        ) -> Node<Self::LiteralNode> {
+            T::render(&self, props, children)
+        }
     }
 
     // Propsの型を外で気にしたくないので隠す
@@ -151,7 +182,7 @@ mod vtree {
         fn factory() -> Box<dyn AnyComponent<LiteralNode = Self::LiteralNode>> {
             Box::new(T::new())
         }
-        
+
         fn clone_props(from: &Box<dyn Any>) -> Box<dyn Any> {
             Box::new(from.downcast_ref::<T::Props>().unwrap().clone())
         }
@@ -167,16 +198,21 @@ mod vtree {
         Raw(T),
     }
 
-    impl<T> Clone for NodeType<T> where T: Clone {
+    impl<T> Clone for NodeType<T>
+    where
+        T: Clone,
+    {
         fn clone(&self) -> Self {
             match self {
-                NodeType::Component { component, clone_props, props } => {
-                    NodeType::Component {
-                        component: *component,
-                        clone_props: *clone_props,
-                        props: clone_props(props),
-                    }
-                }
+                NodeType::Component {
+                    component,
+                    clone_props,
+                    props,
+                } => NodeType::Component {
+                    component: *component,
+                    clone_props: *clone_props,
+                    props: clone_props(props),
+                },
                 NodeType::Raw(literal) => NodeType::Raw(literal.clone()),
             }
         }
@@ -224,17 +260,32 @@ mod vtree_microdom {
     use std::borrow::BorrowMut;
     use std::cell::RefCell;
     use std::collections::HashMap;
+    use std::collections::HashSet;
+    use std::fmt::Debug;
+    use std::hash::Hash;
     use std::rc::Rc;
+    use std::task::Context;
     use std::vec;
+
+    use downcast::{downcast, Any};
+    use dyn_clone::clone_trait_object;
+    use dyn_clone::DynClone;
 
     use crate::microdom;
     use crate::vtree;
     use crate::vtree::AnyComponent;
 
+    pub trait Message: Debug + DynClone + Any {}
+    clone_trait_object!(Message);
+    downcast!(dyn Message);
+
+    impl<T> Message for T where T: 'static + Debug + Clone {}
+
     #[derive(Clone, Debug)]
     pub enum LiteralNode {
         Div(HashMap<String, String>),
         Span(HashMap<String, String>),
+        Button(Box<dyn Message>),
         Text(String),
     }
 
@@ -262,9 +313,12 @@ mod vtree_microdom {
                 panic!("InternalComponentNode must be created with NodeType::Component");
             }
         }
-        fn mount(&mut self) -> Rc<RefCell<microdom::Node>> {
-            let rendered = if let vtree::NodeType::Component { component, props, clone_props: _} =
-                &self.vtree_node.node_type
+        fn mount(&mut self, context: &mut RenderingContext) -> Rc<RefCell<microdom::Node>> {
+            let rendered = if let vtree::NodeType::Component {
+                component,
+                props,
+                clone_props: _,
+            } = &self.vtree_node.node_type
             {
                 self.component.render(props, &self.vtree_node.children)
             } else {
@@ -275,7 +329,7 @@ mod vtree_microdom {
 
             Rc::get_mut(&mut self.rendered.as_mut().unwrap())
                 .unwrap()
-                .mount()
+                .mount(context)
         }
     }
 
@@ -299,7 +353,7 @@ mod vtree_microdom {
             }
         }
 
-        fn mount(&mut self) -> Rc<RefCell<microdom::Node>> {
+        fn mount(&mut self, context: &mut RenderingContext) -> Rc<RefCell<microdom::Node>> {
             if let vtree::NodeType::Raw(literal_node) = &self.vtree_node.node_type {
                 let children: Vec<Rc<RefCell<microdom::Node>>> = self
                     .vtree_node
@@ -307,7 +361,7 @@ mod vtree_microdom {
                     .iter_mut()
                     .filter_map(|child| {
                         if let Some(child) = child {
-                            Some(instantiate_internal_component(child.clone()).mount())
+                            Some(instantiate_internal_component(child.clone()).mount(context))
                         } else {
                             None
                         }
@@ -322,6 +376,12 @@ mod vtree_microdom {
                         },
                         LiteralNode::Span(attributes) => microdom::NodeType::Element {
                             element_type: microdom::ElementType::Span(attributes.clone()),
+                            children: children,
+                        },
+                        LiteralNode::Button(message) => microdom::NodeType::Element {
+                            element_type: microdom::ElementType::Button(
+                                context.new_event_handler_id(),
+                            ),
                             children: children,
                         },
                         LiteralNode::Text(text) => microdom::NodeType::Text(text.clone()),
@@ -342,11 +402,15 @@ mod vtree_microdom {
     }
 
     impl InternalNode<LiteralNode> {
-        fn mount(&mut self) -> Rc<RefCell<microdom::Node>> {
+        fn mount(&mut self, context: &mut RenderingContext) -> Rc<RefCell<microdom::Node>> {
             log::trace!("mounting {:?}", self);
             match self {
-                InternalNode::Component(internal_component_node) => internal_component_node.mount(),
-                InternalNode::Literal(internal_literal_node) => internal_literal_node.mount(),
+                InternalNode::Component(internal_component_node) => {
+                    internal_component_node.mount(context)
+                }
+                InternalNode::Literal(internal_literal_node) => {
+                    internal_literal_node.mount(context)
+                }
             }
         }
     }
@@ -383,9 +447,53 @@ mod vtree_microdom {
     }
 
     #[derive(Debug)]
+    pub struct RenderingContext {
+        found_event_handlers: HashSet<EventHandlerMapping>,
+    }
+
+    impl RenderingContext {
+        pub fn new() -> Self {
+            Self {
+                found_event_handlers: HashSet::new(),
+            }
+        }
+        pub fn new_event_handler_id(&mut self) -> u64 {
+            // TODO: Counter
+            let id = rand::random();
+            self.found_event_handlers.insert(EventHandlerMapping {
+                id,
+                message: Box::new(()),
+            });
+
+            id
+        }
+    }
+
+    #[derive(Debug)]
+    struct EventHandlerMapping {
+        pub id: u64,
+        pub message: Box<dyn Message>,
+    }
+
+    impl Eq for EventHandlerMapping {}
+
+    impl PartialEq for EventHandlerMapping {
+        fn eq(&self, other: &Self) -> bool {
+            self.id == other.id
+        }
+    }
+
+    impl Hash for EventHandlerMapping {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.id.hash(state);
+        }
+    }
+
+    #[derive(Debug)]
     pub struct MicrodomRenderer {
         root: InternalNode<LiteralNode>,
         target: Rc<RefCell<microdom::Node>>,
+        event_handlers: Rc<RefCell<HashMap<u64, EventHandlerMapping>>>,
     }
 
     impl MicrodomRenderer {
@@ -393,15 +501,31 @@ mod vtree_microdom {
             Self {
                 root: instantiate_internal_component(initial),
                 target,
+                event_handlers: Rc::new(RefCell::new(HashMap::new())),
             }
         }
 
         pub fn mount(&mut self) {
-            let result = self.root.mount();
+            let mut context = RenderingContext::new();
 
-            if let microdom::NodeType::Element { element_type, children } = &mut self.target.as_ref().borrow_mut().element_type {
+            let result = self.root.mount(&mut context);
+
+            if let microdom::NodeType::Element {
+                element_type,
+                children,
+            } = &mut self.target.as_ref().borrow_mut().element_type
+            {
                 children.push(result);
             }
+        }
+
+        pub fn on_message(&mut self, message_id: u64) {
+            let event_handlers = self.event_handlers.borrow();
+            let Some(message_mapping) = event_handlers.get(&message_id) else {
+                return;
+            };
+
+            let message = message_mapping.message.clone();
         }
     }
 }
@@ -409,7 +533,7 @@ mod vtree_microdom {
 #[derive(Debug)]
 struct TestComponent;
 
-impl vtree::Component for TestComponent {
+impl vtree::StaticComponent for TestComponent {
     type Props = String;
     type LiteralNode = vtree_microdom::LiteralNode;
 
@@ -444,6 +568,47 @@ impl vtree::Component for TestComponent {
     }
 }
 
+#[derive(Debug)]
+struct Counter {
+    count: u32,
+}
+
+impl vtree::Component for Counter {
+    type Props = ();
+    type Message = ();
+    type LiteralNode = vtree_microdom::LiteralNode;
+
+    fn new() -> Self {
+        Counter { count: 0 }
+    }
+
+    fn render(
+        &self,
+        props: &Self::Props,
+        children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
+    ) -> vtree::Node<Self::LiteralNode> {
+        vtree::Node::new_literal(
+            vtree_microdom::LiteralNode::Div(hash_map! {
+                "class".to_string() => "counter".to_string()
+            }),
+            vec![
+                Some(vtree::Node::new_literal(
+                    vtree_microdom::LiteralNode::Text(format!("Count: {}", self.count)),
+                    vec![],
+                )),
+                Some(vtree::Node::new_literal(
+                    vtree_microdom::LiteralNode::Button(Box::new(())),
+                    vec![],
+                )),
+            ],
+        )
+    }
+
+    fn on_message(&mut self, message: &Self::Message) {
+        self.count += 1;
+    }
+}
+
 #[derive(Debug, Clone)]
 struct BiTreeProps {
     depth: u32,
@@ -452,7 +617,7 @@ struct BiTreeProps {
 #[derive(Debug)]
 struct BiTree;
 
-impl vtree::Component for BiTree {
+impl vtree::StaticComponent for BiTree {
     type Props = BiTreeProps;
     type LiteralNode = vtree_microdom::LiteralNode;
 
@@ -466,13 +631,29 @@ impl vtree::Component for BiTree {
         children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
     ) -> vtree::Node<Self::LiteralNode> {
         if props.depth == 0 {
-            return vtree::Node::new_literal(vtree_microdom::LiteralNode::Div(hash_map! {}), vec![]);
+            return vtree::Node::new_literal(
+                vtree_microdom::LiteralNode::Div(hash_map! {}),
+                vec![],
+            );
         }
 
-        vtree::Node::new_literal(vtree_microdom::LiteralNode::Div(hash_map! {}), vec![
-            Some(vtree::Node::new::<BiTree>(BiTreeProps {depth: props.depth - 1}, vec![])),
-            Some(vtree::Node::new::<BiTree>(BiTreeProps {depth: props.depth - 1}, vec![]))
-        ])
+        vtree::Node::new_literal(
+            vtree_microdom::LiteralNode::Div(hash_map! {}),
+            vec![
+                Some(vtree::Node::new::<BiTree>(
+                    BiTreeProps {
+                        depth: props.depth - 1,
+                    },
+                    vec![],
+                )),
+                Some(vtree::Node::new::<BiTree>(
+                    BiTreeProps {
+                        depth: props.depth - 1,
+                    },
+                    vec![],
+                )),
+            ],
+        )
     }
 }
 
@@ -482,7 +663,7 @@ struct App {
     seconds: u64,
 }
 
-impl vtree::MutableComponent for App {
+impl vtree::Component for App {
     type Props = ();
     type Message = ();
     type LiteralNode = vtree_microdom::LiteralNode;
@@ -499,10 +680,16 @@ impl vtree::MutableComponent for App {
         props: &Self::Props,
         children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
     ) -> vtree::Node<Self::LiteralNode> {
-        vtree::Node::new::<BiTree>(BiTreeProps {depth: 6}, vec![])
+        vtree::Node::new_literal(
+            vtree_microdom::LiteralNode::Div(HashMap::new()),
+            vec![
+                Some(vtree::Node::new::<Counter>((), vec![])),
+                Some(vtree::Node::new::<BiTree>(BiTreeProps { depth: 6 }, vec![])),
+            ],
+        )
     }
 
-    fn on_message(&mut self, message: Self::Message) {
+    fn on_message(&mut self, message: &Self::Message) {
         self.seconds = self.date.elapsed().as_secs();
     }
 }
@@ -528,10 +715,46 @@ fn main() {
 
     renderer.mount();
 
-    println!(
-        "mount: {:}ms",
-        time.elapsed().as_micros() as f64 / 1000.0
-    );
+    println!("mount: {:}ms", time.elapsed().as_micros() as f64 / 1000.0);
 
     println!("{}", container.as_ref().borrow().element_type.to_string());
+
+    let mut rl = rustyline::DefaultEditor::new().unwrap();
+
+    loop {
+        let line = rl.readline(">> ");
+
+        match line {
+            Ok(line) => {
+                let tokens = line.split_whitespace().collect::<Vec<&str>>();
+
+                if tokens.len() != 2 {
+                    println!("Invalid command syntax: <command> <args_without_white_space>");
+                    continue;
+                }
+
+                let command = tokens[0];
+                let arg = tokens[1];
+
+                match command {
+                    "message" => {
+                        let message = arg.parse::<u64>();
+
+                        if let Ok(message) = message {
+                            renderer.on_message(message);
+                            println!("message: {:?}", message);
+                        } else {
+                            println!("Invalid message: {:?}", arg);
+                        }
+                    }
+                    _ => {
+                        println!("Unknown command: {:?}", command);
+                    }
+                }
+            }
+            Err(_) => {
+                break;
+            }
+        }
+    }
 }
