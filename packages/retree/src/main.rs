@@ -1,13 +1,10 @@
-use std::{borrow::Borrow, cell::RefCell, collections::HashMap, ops::BitAnd, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use map_macro::hash_map;
-use vtree::Component;
+use vtree::{Component, Message};
 
 mod microdom {
     use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
-
-    use downcast::{downcast, Any};
-    use dyn_clone::{clone_trait_object, DynClone};
 
     #[derive(Debug)]
     pub enum ElementType {
@@ -60,7 +57,7 @@ mod microdom {
                     tag = element_type.to_string(),
                     children = children
                         .iter()
-                        .map(|child: &Rc<RefCell<Node>>| { child.as_ref().borrow().to_string() })
+                        .map(|child: &Rc<RefCell<Node>>| { child.borrow().to_string() })
                         .collect::<String>()
                 ),
                 NodeType::Text(text) => text.clone(),
@@ -86,6 +83,13 @@ mod vtree {
     use std::any::Any;
     use std::fmt::Debug;
 
+    use downcast::downcast;
+    use dyn_clone::{clone_trait_object, DynClone};
+
+    pub trait Message: Debug + DynClone + downcast::Any {}
+    clone_trait_object!(Message);
+    downcast!(dyn Message);
+
     pub trait StaticComponent: 'static + Debug {
         type Props: Debug + Clone + 'static;
         type LiteralNode;
@@ -107,12 +111,7 @@ mod vtree {
             props: &Self::Props,
             children: &Vec<Option<Node<Self::LiteralNode>>>,
         ) -> Node<Self::LiteralNode>;
-        fn on_message(&mut self, message: &Self::Message) {}
-        fn on_message_any(&mut self, message: Box<dyn Any>) {
-            if let Some(message) = message.downcast_ref::<Self::Message>() {
-                self.on_message(message);
-            }
-        }
+        fn on_message(&mut self, message: &Self::Message);
     }
 
     impl<T> Component for T
@@ -134,6 +133,8 @@ mod vtree {
         ) -> Node<Self::LiteralNode> {
             T::render(&self, props, children)
         }
+
+        fn on_message(&mut self, _message: &Self::Message) {}
     }
 
     // Propsの型を外で気にしたくないので隠す
@@ -144,6 +145,7 @@ mod vtree {
             props: &Box<dyn Any>,
             children: &Vec<Option<Node<Self::LiteralNode>>>,
         ) -> Node<Self::LiteralNode>;
+        fn on_message_any(&mut self, message: Box<dyn Message>);
     }
 
     impl<T> AnyComponent for T
@@ -161,6 +163,12 @@ mod vtree {
             log::trace!("got: {}", std::any::type_name_of_val(&*props));
             let new_props = props.downcast_ref::<T::Props>().unwrap();
             (self as &T).render(new_props, children)
+        }
+
+        fn on_message_any(&mut self, message: Box<dyn Message>) {
+            if let Ok(message) = message.downcast_ref::<T::Message>() {
+                self.on_message(message);
+            }
         }
     }
 
@@ -257,43 +265,56 @@ mod vtree {
 
 mod vtree_microdom {
     use core::panic;
-    use std::borrow::BorrowMut;
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::collections::HashSet;
     use std::fmt::Debug;
     use std::hash::Hash;
     use std::rc::Rc;
-    use std::task::Context;
+    use std::rc::Weak;
     use std::vec;
-
-    use downcast::{downcast, Any};
-    use dyn_clone::clone_trait_object;
-    use dyn_clone::DynClone;
 
     use crate::microdom;
     use crate::vtree;
     use crate::vtree::AnyComponent;
+    use crate::vtree::Message;
 
-    pub trait Message: Debug + DynClone + Any {}
-    clone_trait_object!(Message);
-    downcast!(dyn Message);
+    #[derive(Debug)]
+    pub struct MessageHandlerInfo {
+        pub id: u64,
+        pub message: Box<dyn vtree::Message>,
+        pub(self) component: Weak<RefCell<InternalComponentNode<LiteralNode>>>,
+    }
 
-    impl<T> Message for T where T: 'static + Debug + Clone {}
+    impl Eq for MessageHandlerInfo {}
+
+    impl PartialEq for MessageHandlerInfo {
+        fn eq(&self, other: &Self) -> bool {
+            self.id == other.id
+        }
+    }
+
+    impl Hash for MessageHandlerInfo {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.id.hash(state);
+        }
+    }
+
+    /*impl<T> vtree::Message for T where T: 'static + Debug + Clone {}*/
 
     #[derive(Clone, Debug)]
     pub enum LiteralNode {
         Div(HashMap<String, String>),
         Span(HashMap<String, String>),
-        Button(Box<dyn Message>),
+        Button(Box<dyn vtree::Message>),
         Text(String),
     }
 
     #[derive(Debug)]
     struct InternalComponentNode<L> {
-        component: Box<dyn AnyComponent<LiteralNode = L>>,
+        component: RefCell<Box<dyn AnyComponent<LiteralNode = L>>>,
         vtree_node: vtree::Node<L>,
-        rendered: Option<Rc<InternalNode<L>>>,
+        rendered: Option<Rc<RefCell<InternalNode<L>>>>,
     }
 
     impl InternalComponentNode<LiteralNode> {
@@ -305,7 +326,7 @@ mod vtree_microdom {
             } = &vtree_node.node_type
             {
                 Self {
-                    component: component(),
+                    component: RefCell::from(component()),
                     vtree_node,
                     rendered: None,
                 }
@@ -320,16 +341,38 @@ mod vtree_microdom {
                 clone_props: _,
             } = &self.vtree_node.node_type
             {
-                self.component.render(props, &self.vtree_node.children)
+                self.component
+                    .borrow_mut()
+                    .render(props, &self.vtree_node.children)
             } else {
                 panic!("InternalComponentNode must be created with NodeType::Component");
             };
 
-            self.rendered = Some(Rc::new(instantiate_internal_component(rendered)));
+            self.rendered = Some(Rc::new(RefCell::new(instantiate_internal_component(
+                rendered,
+            ))));
 
-            Rc::get_mut(&mut self.rendered.as_mut().unwrap())
-                .unwrap()
+            (**self.rendered.as_mut().unwrap())
+                .borrow_mut()
                 .mount(context)
+        }
+
+        fn unmount(&mut self) {
+            if let Some(rendered) = &mut self.rendered {
+                Rc::get_mut(rendered).unwrap().get_mut().unmount();
+            } else {
+                panic!("InternalComponentNode has not been mounted yet");
+            }
+        }
+
+        fn on_message_any(&mut self, message: Box<dyn Message>) {
+            self.component.borrow_mut().on_message_any(message);
+        }
+    }
+
+    impl<L> Drop for InternalComponentNode<L> {
+        fn drop(&mut self) {
+            log::trace!("InternalComponentNode dropped");
         }
     }
 
@@ -337,7 +380,7 @@ mod vtree_microdom {
     struct InternalLiteralNode {
         vtree_node: vtree::Node<LiteralNode>,
         bind_to: Option<Rc<RefCell<microdom::Node>>>,
-        children: Vec<Option<Rc<InternalNode<LiteralNode>>>>, // children: InternalNode<L>
+        children: Vec<Option<Rc<RefCell<InternalNode<LiteralNode>>>>>, // children: InternalNode<L>
     }
 
     impl InternalLiteralNode {
@@ -355,18 +398,30 @@ mod vtree_microdom {
 
         fn mount(&mut self, context: &mut RenderingContext) -> Rc<RefCell<microdom::Node>> {
             if let vtree::NodeType::Raw(literal_node) = &self.vtree_node.node_type {
-                let children: Vec<Rc<RefCell<microdom::Node>>> = self
+                self.children = self
                     .vtree_node
                     .children
                     .iter_mut()
-                    .filter_map(|child| {
+                    .map(|child| {
                         if let Some(child) = child {
-                            Some(instantiate_internal_component(child.clone()).mount(context))
+                            Some(Rc::new(RefCell::new(instantiate_internal_component(
+                                child.clone(),
+                            ))))
                         } else {
                             None
                         }
                     })
                     .collect();
+
+                let children = self
+                    .children
+                    .iter_mut()
+                    .filter_map(|child| {
+                        child
+                            .as_mut()
+                            .map(|child| (**child).borrow_mut().mount(context))
+                    })
+                    .collect::<Vec<_>>();
 
                 self.bind_to = Some(Rc::new(RefCell::new(microdom::Node {
                     element_type: match literal_node {
@@ -380,7 +435,7 @@ mod vtree_microdom {
                         },
                         LiteralNode::Button(message) => microdom::NodeType::Element {
                             element_type: microdom::ElementType::Button(
-                                context.new_event_handler_id(),
+                                context.new_event_handler_id(message.clone()),
                             ),
                             children: children,
                         },
@@ -393,11 +448,25 @@ mod vtree_microdom {
                 panic!("InternalLiteralNode must be created with NodeType::Raw");
             }
         }
+
+        fn unmount(&mut self) {
+            for child in self.children.iter_mut() {
+                if let Some(child) = child {
+                    // TODO
+                }
+            }
+        }
+    }
+
+    impl Drop for InternalLiteralNode {
+        fn drop(&mut self) {
+            log::trace!("InternalLiteralNode dropped: {:?}", self);
+        }
     }
 
     #[derive(Debug)]
     enum InternalNode<L> {
-        Component(InternalComponentNode<L>),
+        Component(Rc<RefCell<InternalComponentNode<L>>>),
         Literal(InternalLiteralNode),
     }
 
@@ -406,10 +475,26 @@ mod vtree_microdom {
             log::trace!("mounting {:?}", self);
             match self {
                 InternalNode::Component(internal_component_node) => {
-                    internal_component_node.mount(context)
+                    let a = internal_component_node.clone();
+                    context.set_current_component(Rc::downgrade(&a));
+                    let mut b = RefCell::borrow_mut(&a);
+                    b.mount(context)
                 }
                 InternalNode::Literal(internal_literal_node) => {
                     internal_literal_node.mount(context)
+                }
+            }
+        }
+
+        fn unmount(&mut self) {
+            match self {
+                InternalNode::Component(internal_component_node) => {
+                    let mut b = RefCell::borrow_mut(&internal_component_node);
+                    // TODO: ComponentWillUnmount
+                    b.unmount();
+                }
+                InternalNode::Literal(internal_literal_node) => {
+                    internal_literal_node.unmount();
                 }
             }
         }
@@ -439,7 +524,9 @@ mod vtree_microdom {
                 component: _,
                 props: _,
                 clone_props: _,
-            } => InternalNode::Component(InternalComponentNode::new(vtree_node)),
+            } => InternalNode::Component(Rc::new(RefCell::new(InternalComponentNode::new(
+                vtree_node,
+            )))),
             vtree::NodeType::Raw(_literal) => {
                 InternalNode::Literal(InternalLiteralNode::new(vtree_node))
             }
@@ -448,27 +535,39 @@ mod vtree_microdom {
 
     #[derive(Debug)]
     pub struct RenderingContext {
-        found_event_handlers: HashSet<EventHandlerMapping>,
+        found_event_handlers: HashSet<MessageHandlerInfo>,
+        current_component: Option<Weak<RefCell<InternalComponentNode<LiteralNode>>>>,
     }
 
     impl RenderingContext {
         pub fn new() -> Self {
             Self {
                 found_event_handlers: HashSet::new(),
+                current_component: None,
             }
         }
-        pub fn new_event_handler_id(&mut self) -> u64 {
+
+        pub fn new_event_handler_id(&mut self, message: Box<dyn Message>) -> u64 {
             // TODO: Counter
             let id = rand::random();
-            self.found_event_handlers.insert(EventHandlerMapping {
+
+            self.found_event_handlers.insert(MessageHandlerInfo {
                 id,
-                message: Box::new(()),
+                message: message,
+                component: self.current_component.as_ref().unwrap().clone(),
             });
 
             id
         }
-    }
 
+        pub(self) fn set_current_component(
+            &mut self,
+            component: Weak<RefCell<InternalComponentNode<LiteralNode>>>,
+        ) {
+            self.current_component = Some(component);
+        }
+    }
+    /*
     #[derive(Debug)]
     struct EventHandlerMapping {
         pub id: u64,
@@ -488,12 +587,13 @@ mod vtree_microdom {
             self.id.hash(state);
         }
     }
+    */
 
     #[derive(Debug)]
     pub struct MicrodomRenderer {
         root: InternalNode<LiteralNode>,
         target: Rc<RefCell<microdom::Node>>,
-        event_handlers: Rc<RefCell<HashMap<u64, EventHandlerMapping>>>,
+        event_handlers: HashMap<u64, MessageHandlerInfo>,
     }
 
     impl MicrodomRenderer {
@@ -501,7 +601,7 @@ mod vtree_microdom {
             Self {
                 root: instantiate_internal_component(initial),
                 target,
-                event_handlers: Rc::new(RefCell::new(HashMap::new())),
+                event_handlers: HashMap::new(),
             }
         }
 
@@ -511,21 +611,45 @@ mod vtree_microdom {
             let result = self.root.mount(&mut context);
 
             if let microdom::NodeType::Element {
-                element_type,
                 children,
+                element_type: _,
             } = &mut self.target.as_ref().borrow_mut().element_type
             {
                 children.push(result);
             }
+
+            for event_handler in context.found_event_handlers {
+                self.event_handlers.insert(event_handler.id, event_handler);
+            }
+        }
+
+        pub fn unmount(&mut self) {
+            self.root.unmount();
         }
 
         pub fn on_message(&mut self, message_id: u64) {
-            let event_handlers = self.event_handlers.borrow();
-            let Some(message_mapping) = event_handlers.get(&message_id) else {
+            let Some(message_mapping) = self.event_handlers.get(&message_id) else {
                 return;
             };
 
-            let message = message_mapping.message.clone();
+            println!(
+                "found message mapping: {:?}, count: {}",
+                message_mapping,
+                message_mapping.component.strong_count()
+            );
+
+            message_mapping.component.upgrade().map(|component| {
+                println!("found component: {:?}", component);
+                (*component)
+                    .borrow_mut()
+                    .on_message_any(message_mapping.message.clone());
+            });
+        }
+    }
+
+    impl Drop for MicrodomRenderer {
+        fn drop(&mut self) {
+            log::trace!("MicrodomRenderer dropped: {:?}", self.root);
         }
     }
 }
@@ -544,7 +668,7 @@ impl vtree::StaticComponent for TestComponent {
     fn render(
         &self,
         props: &Self::Props,
-        children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
+        _children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
     ) -> vtree::Node<Self::LiteralNode> {
         vtree::Node::new_literal(
             vtree_microdom::LiteralNode::Div(hash_map! {
@@ -568,6 +692,8 @@ impl vtree::StaticComponent for TestComponent {
     }
 }
 
+impl Message for () {}
+
 #[derive(Debug)]
 struct Counter {
     count: u32,
@@ -584,8 +710,8 @@ impl vtree::Component for Counter {
 
     fn render(
         &self,
-        props: &Self::Props,
-        children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
+        _props: &Self::Props,
+        _children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
     ) -> vtree::Node<Self::LiteralNode> {
         vtree::Node::new_literal(
             vtree_microdom::LiteralNode::Div(hash_map! {
@@ -604,8 +730,15 @@ impl vtree::Component for Counter {
         )
     }
 
-    fn on_message(&mut self, message: &Self::Message) {
+    fn on_message(&mut self, _message: &Self::Message) {
         self.count += 1;
+        println!("Count up");
+    }
+}
+
+impl Drop for Counter {
+    fn drop(&mut self) {
+        println!("Counter dropped: {:?}", self.count);
     }
 }
 
@@ -628,7 +761,7 @@ impl vtree::StaticComponent for BiTree {
     fn render(
         &self,
         props: &Self::Props,
-        children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
+        _children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
     ) -> vtree::Node<Self::LiteralNode> {
         if props.depth == 0 {
             return vtree::Node::new_literal(
@@ -677,25 +810,25 @@ impl vtree::Component for App {
 
     fn render(
         &self,
-        props: &Self::Props,
-        children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
+        _props: &Self::Props,
+        _children: &Vec<Option<vtree::Node<Self::LiteralNode>>>,
     ) -> vtree::Node<Self::LiteralNode> {
         vtree::Node::new_literal(
             vtree_microdom::LiteralNode::Div(HashMap::new()),
             vec![
                 Some(vtree::Node::new::<Counter>((), vec![])),
-                Some(vtree::Node::new::<BiTree>(BiTreeProps { depth: 6 }, vec![])),
+                /*Some(vtree::Node::new::<BiTree>(BiTreeProps { depth: 6 }, vec![])),*/
             ],
         )
     }
 
-    fn on_message(&mut self, message: &Self::Message) {
+    fn on_message(&mut self, _message: &Self::Message) {
         self.seconds = self.date.elapsed().as_secs();
     }
 }
 
 fn main() {
-    simple_logger::init_with_level(log::Level::Warn).unwrap();
+    env_logger::init();
 
     let time = std::time::Instant::now();
 
@@ -716,8 +849,6 @@ fn main() {
     renderer.mount();
 
     println!("mount: {:}ms", time.elapsed().as_micros() as f64 / 1000.0);
-
-    println!("{}", container.as_ref().borrow().element_type.to_string());
 
     let mut rl = rustyline::DefaultEditor::new().unwrap();
 
@@ -742,10 +873,21 @@ fn main() {
 
                         if let Ok(message) = message {
                             renderer.on_message(message);
-                            println!("message: {:?}", message);
+                            println!("Sent message: {:?}", message);
                         } else {
                             println!("Invalid message: {:?}", arg);
                         }
+                    }
+                    "print" => {
+                        println!("{}", container.as_ref().borrow().element_type.to_string());
+                    }
+                    "mount" => {
+                        renderer.mount();
+                        println!("Mounted");
+                    }
+                    "unmount" => {
+                        renderer.unmount();
+                        println!("Unmounted");
                     }
                     _ => {
                         println!("Unknown command: {:?}", command);
