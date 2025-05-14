@@ -1,0 +1,18 @@
+[package]
+name = "oscpie"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.98"
+env_logger = "0.11.8"
+futures = "0.3.31"
+futures-lite = "2.6.0"
+log = "0.4.27"
+openvr_sys = "2.1.1"
+png = "0.17.16"
+simple_logger = "5.0.0"
+tiny-skia = "0.11.4"
+vulkano = "0.35.1"
+vulkano-shaders = "0.35.0"
+winit = "0.30.10"

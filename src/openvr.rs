@@ -1,0 +1,311 @@
+use log::*;
+use anyhow::{anyhow, Result};
+
+use std::{alloc::System, ffi::{c_void, CStr}};
+use openvr_sys::{self as sys, VkDevice_T, VkInstance_T, VkPhysicalDevice_T, VkQueue_T};
+use vulkano::{
+    device::{DeviceOwned, Queue},
+    image::Image,
+    Handle, VulkanObject,
+};
+
+#[derive(Debug, Clone, Copy)]
+pub enum TextureType {
+    Vulkan = 2,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ColorSpace {
+    Auto = 0,
+    Gamma = 1,
+    Linear = 2,
+}
+
+#[derive(Debug)]
+pub enum TextureHandle<'a> {
+    Vulkan(&'a Image, &'a Queue),
+    OpenGL(&'a mut c_void),
+}
+
+#[derive(Debug)]
+pub struct Texture<'a> {
+    pub handle: TextureHandle<'a>,
+    pub texture_type: TextureType,
+    pub color_space: ColorSpace,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum EVRApplicationType {
+    Other = 0,
+    Scene = 1,
+    Overlay = 2,
+    Background = 3,
+    Utility = 4,
+    VRMonitor = 5,
+    SteamWatchdog = 6,
+    Bootstrapper = 7,
+    WebHelper = 8,
+    OpenXRInstance = 9,
+    OpenXRScene = 10,
+    OpenXROverlay = 11,
+    Prism = 12,
+    RoomView = 13,
+    Max = 14,
+}
+
+fn get_interface<T>(interface_version: &[u8]) -> Result<&T> {
+    let mut interface_version_str: Vec<u8> = Vec::with_capacity(8 + interface_version.len());
+    interface_version_str.extend_from_slice(b"FnTable:".as_slice());
+    interface_version_str.extend_from_slice(interface_version);
+
+    let mut error = sys::EVRInitError_VRInitError_None;
+
+    let result = unsafe {
+        sys::VR_GetGenericInterface(interface_version_str.as_ptr() as *const i8, &mut error)
+    };
+
+    if error != sys::EVRInitError_VRInitError_None {
+        return Err(anyhow::anyhow!("Failed to get interface: {}", error));
+    }
+
+    Ok(unsafe { &*(result as *const T) })
+}
+
+pub struct OpenVR {
+    openvr: isize,
+}
+
+impl OpenVR {
+    pub fn new(application_type: EVRApplicationType) -> Result<Self> {
+        let mut error: openvr_sys::EVRInitError = openvr_sys::EVRInitError_VRInitError_None;
+
+        let openvr = unsafe { openvr_sys::VR_InitInternal(&mut error, application_type as i32) };
+
+        if error != sys::EVRInitError_VRInitError_None {
+            return Err(anyhow::anyhow!("Failed to initialize OpenVR: {}", error));
+        }
+
+        Ok(OpenVR { openvr })
+    }
+
+    pub fn overlay<'a>(&'a self) -> Result<OverlayInterface<'a>> {
+        let sys = get_interface::<sys::VR_IVROverlay_FnTable>(sys::IVROverlay_Version)?;
+
+        Ok(OverlayInterface { sys })
+    }
+
+    pub fn system(&self) -> Result<SystemInterface> {
+        let sys = get_interface::<sys::VR_IVRSystem_FnTable>(sys::IVRSystem_Version)?;
+
+        Ok(SystemInterface { sys })
+    }
+
+    pub fn compositor(&self) -> Result<CompositorInterface> {
+        let sys = get_interface::<sys::VR_IVRCompositor_FnTable>(sys::IVRCompositor_Version)?;
+
+        Ok(CompositorInterface { sys })
+    }
+}
+
+impl Drop for OpenVR {
+    fn drop(&mut self) {
+        debug!("Dropping OpenVR");
+        unsafe {
+            sys::VR_ShutdownInternal();
+        }
+    }
+}
+
+pub struct SystemInterface<'a> {
+    sys: &'a sys::VR_IVRSystem_FnTable,
+}
+
+impl SystemInterface<'_> {}
+
+pub struct CompositorInterface<'a> {
+    sys: &'a sys::VR_IVRCompositor_FnTable,
+}
+
+impl CompositorInterface<'_> {
+    pub fn get_vulkan_instance_extensions_required(&self) -> Result<Vec<String>> {
+        let mut extensions: [u8; 4096] = [0; 4096];
+
+        unsafe {
+            self.sys.GetVulkanInstanceExtensionsRequired.unwrap()(
+                extensions.as_mut_ptr() as *mut i8,
+                4096,
+                /*extensions.len() as u32*/
+            )
+        };
+
+        let result = CStr::from_bytes_until_nul(&extensions)?.to_string_lossy()
+            .split_ascii_whitespace()
+            .map(|s| s.to_string())
+            .collect();
+
+        debug!("Vulkan instance extensions: {:?}", result);
+
+        Ok(result)
+    }
+
+    pub fn get_vulkan_device_extensions_required(&self, device: &vulkano::device::physical::PhysicalDevice) -> Result<Vec<String>> {
+        let mut extensions: [u8; 4096] = [0; 4096];
+
+        unsafe {
+            self.sys.GetVulkanDeviceExtensionsRequired.unwrap()(
+                device.handle().as_raw() as *mut sys::VkPhysicalDevice_T,
+                extensions.as_mut_ptr() as *mut i8,
+                4096,
+            )
+        };
+
+        let result = CStr::from_bytes_until_nul(&extensions)?.to_string_lossy()
+            .split_ascii_whitespace()
+            .map(|s| s.to_string())
+            .collect();
+
+        debug!("Vulkan device extensions: {:?}", result);
+
+        Ok(result)
+    }
+}
+
+pub struct OverlayInterface<'a> {
+    sys: &'a sys::VR_IVROverlay_FnTable,
+}
+
+impl OverlayInterface<'_> {
+    pub fn create(&self, overlay_key: &str, overlay_name: &str) -> Result<Overlay> {
+        let Ok(overlay_key) = std::ffi::CString::new(overlay_key) else {
+            return Err(anyhow!("Failed to create overlay key"));
+        };
+        let Ok(overlay_name) = std::ffi::CString::new(overlay_name) else {
+            return Err(anyhow!("Failed to create overlay name"));
+        };
+
+        let mut overlay_handle: sys::VROverlayHandle_t = 0;
+
+        let error = unsafe {
+            self.sys.CreateOverlay.unwrap()(
+                overlay_key.as_ptr() as *mut i8,
+                overlay_name.as_ptr() as *mut i8,
+                &mut overlay_handle,
+            )
+        };
+
+        if error != sys::EVROverlayError_VROverlayError_None {
+            return Err(anyhow::anyhow!("Failed to create overlay: {}", error));
+        }
+
+        Ok(Overlay {
+            interface: self,
+            overlay_handle,
+        })
+    }
+}
+
+pub struct Overlay<'a> {
+    interface: &'a OverlayInterface<'a>,
+    overlay_handle: sys::VROverlayHandle_t,
+}
+
+impl Overlay<'_> {
+    pub fn show(&self) -> Result<()> {
+        let error = unsafe { self.interface.sys.ShowOverlay.unwrap()(self.overlay_handle) };
+
+        if error != sys::EVROverlayError_VROverlayError_None {
+            return Err(anyhow::anyhow!("Failed to show overlay: {}", error));
+        }
+
+        Ok(())
+    }
+
+    pub fn hide(&self) -> Result<()> {
+        let error = unsafe { self.interface.sys.HideOverlay.unwrap()(self.overlay_handle) };
+
+        if error != sys::EVROverlayError_VROverlayError_None {
+            return Err(anyhow::anyhow!("Failed to hide overlay: {}", error));
+        }
+
+        Ok(())
+    }
+
+    pub fn set_overlay_raw(
+        &self,
+        buffer: &[u8],
+        width: u32,
+        height: u32,
+        bytes_per_pixel: u32,
+    ) -> Result<()> {
+        let error = unsafe {
+            self.interface.sys.SetOverlayRaw.unwrap()(
+                self.overlay_handle,
+                buffer.as_ptr() as *mut c_void,
+                width,
+                height,
+                bytes_per_pixel,
+            )
+        };
+
+        debug!(
+            "SetOverlayRaw: {}, {} {} {} {}",
+            self.overlay_handle, width, height, bytes_per_pixel, error
+        );
+
+        if error != sys::EVROverlayError_VROverlayError_None {
+            return Err(anyhow::anyhow!("Failed to set overlay raw: {}", error));
+        }
+
+        Ok(())
+    }
+
+    pub fn set_overlay_texture(&self, texture: &mut Texture) -> Result<()> {
+        let TextureHandle::Vulkan(ref vulkan_image, ref queue) = texture.handle else {
+            return Err(anyhow::anyhow!("Unsupported texture type"));
+        };
+
+        let mut texture_pointer = sys::VRVulkanTextureData_t {
+            m_nImage: vulkan_image.handle().as_raw(),
+            m_pDevice: vulkan_image.device().handle().as_raw() as *mut VkDevice_T,
+            m_pPhysicalDevice: vulkan_image.device().physical_device().handle().as_raw()
+                as *mut VkPhysicalDevice_T,
+            m_pInstance: vulkan_image.device().instance().handle().as_raw() as *mut VkInstance_T,
+            m_pQueue: queue.handle().as_raw() as *mut VkQueue_T,
+            m_nQueueFamilyIndex: queue.queue_family_index() as u32,
+            m_nWidth: vulkan_image.extent()[0],
+            m_nHeight: vulkan_image.extent()[1],
+            m_nFormat: vulkan_image.format() as u32,
+            m_nSampleCount: vulkan_image.samples() as u32,
+        };
+
+        debug!("{:?}", texture_pointer);
+
+        let mut texture = sys::Texture_t {
+            handle: &mut texture_pointer as *mut _ as *mut std::os::raw::c_void,
+            eType: texture.texture_type as i32,
+            eColorSpace: texture.color_space as i32,
+        };
+
+        let error = unsafe {
+            self.interface.sys.SetOverlayTexture.unwrap()(
+                self.overlay_handle,
+                &mut texture as *mut sys::Texture_t,
+            )
+        };
+
+        if error != sys::EVROverlayError_VROverlayError_None {
+            return Err(anyhow::anyhow!("Failed to set overlay texture: {}", error));
+        }
+
+        Ok(())
+    }
+}
+
+impl Drop for Overlay<'_> {
+    fn drop(&mut self) {
+        debug!("Dropping Overlay");
+        unsafe {
+            self.interface.sys.DestroyOverlay.unwrap()(self.overlay_handle);
+        }
+    }
+}
