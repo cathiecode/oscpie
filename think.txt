@@ -1,5 +1,0 @@
-messageがInto<u64>とかになってた方がうれしそうだけど…
-
-InternalNode: ComponentNode, 
-vtree::Node: (React)Element
-microdom::Node/LiteralNode: Element
