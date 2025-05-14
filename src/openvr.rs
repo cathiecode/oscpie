@@ -299,6 +299,16 @@ impl Overlay<'_> {
 
         Ok(())
     }
+
+    pub fn wait_frame_sync(&self, timeout: u32) -> Result<()> {
+        let error = unsafe { self.interface.sys.WaitFrameSync.unwrap()(timeout) };
+
+        if error != sys::EVROverlayError_VROverlayError_None {
+            return Err(anyhow::anyhow!("Failed to wait for overlay frame: {}", error));
+        }
+
+        Ok(())
+    }
 }
 
 impl Drop for Overlay<'_> {
