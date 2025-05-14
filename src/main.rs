@@ -1,33 +1,24 @@
 use anyhow::Result;
-use log::*;
+use log::debug;
 
-use tiny_skia::*;
-use vulkano::{
-    device::DeviceExtensions,
-    image::Image,
-    instance::{Instance, InstanceExtensions},
-    Handle, VulkanObject,
-};
+use tiny_skia::{LineCap, Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform};
 mod openvr;
 
 mod vulkan {
     use anyhow::Result;
-    use log::*;
+    use log::{debug, log_enabled, trace};
     use std::{
         default::Default,
-        fs::File,
-        io::{BufReader, BufWriter},
         mem::forget,
-        path::Path,
         sync::Arc,
     };
-    use tiny_skia::{Pixmap, PixmapMut};
+    use tiny_skia::Pixmap;
     use vulkano::{
-        buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
+        buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
         command_buffer::{
             allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-            CommandBufferUsage, CopyBufferToImageInfo, CopyImageToBufferInfo,
-            PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
+            CommandBufferUsage, CopyBufferToImageInfo,
+            PrimaryCommandBufferAbstract,
         },
         device::{
             physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
@@ -35,9 +26,7 @@ mod vulkan {
         },
         format::Format,
         image::{
-            sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
-            view::ImageView,
-            Image, ImageCreateInfo, ImageLayout, ImageType, ImageUsage,
+            Image, ImageCreateInfo, ImageType, ImageUsage,
         },
         instance::{
             debug::{
@@ -47,156 +36,14 @@ mod vulkan {
             Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions,
         },
         memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
-        pipeline::{
-            graphics::{
-                color_blend::{ColorBlendAttachmentState, ColorBlendState},
-                input_assembly::InputAssemblyState,
-                multisample::MultisampleState,
-                rasterization::RasterizationState,
-                vertex_input::{Vertex, VertexDefinition},
-                viewport::{Viewport, ViewportState},
-                GraphicsPipelineCreateInfo,
-            },
-            layout::PipelineDescriptorSetLayoutCreateInfo,
-            GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
-        },
-        render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
-        swapchain::Surface,
-        sync::GpuFuture,
         DeviceSize, VulkanLibrary,
     };
 
     use crate::openvr::CompositorInterface;
 
-    fn script() {
-        let library = VulkanLibrary::new().unwrap();
-
-        let instance = Instance::new(
-            library,
-            InstanceCreateInfo {
-                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        let (physical_device, queue_family_index) = instance
-            .enumerate_physical_devices()
-            .unwrap()
-            // No need for swapchain extension support.
-            .filter_map(|p| {
-                p.queue_family_properties()
-                    .iter()
-                    .position(|q| q.queue_flags.intersects(QueueFlags::GRAPHICS))
-                    .map(|i| (p, i as u32))
-            })
-            .min_by_key(|(p, _)| match p.properties().device_type {
-                PhysicalDeviceType::DiscreteGpu => 0,
-                PhysicalDeviceType::IntegratedGpu => 1,
-                PhysicalDeviceType::VirtualGpu => 2,
-                PhysicalDeviceType::Cpu => 3,
-                PhysicalDeviceType::Other => 4,
-                _ => 5,
-            })
-            .expect("no suitable physical device found");
-
-        debug!(
-            "Using device: {} (type: {:?})",
-            physical_device.properties().device_name,
-            physical_device.properties().device_type,
-        );
-
-        let (device, mut queues) = Device::new(
-            physical_device.clone(),
-            DeviceCreateInfo {
-                queue_create_infos: vec![QueueCreateInfo {
-                    queue_family_index,
-                    ..Default::default()
-                }],
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        let queue = queues.next().unwrap();
-
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-
-        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
-        ));
-
-        let mut uploads = AutoCommandBufferBuilder::primary(
-            command_buffer_allocator.clone(),
-            queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit,
-        )
-        .unwrap();
-
-        // ----------------- テクスチャの用意
-        let texture = {
-            let png_bytes = include_bytes!("image_img.png").as_slice();
-            let decoder = png::Decoder::new(png_bytes);
-            let mut reader = decoder.read_info().unwrap();
-            let info = reader.info();
-            let extent = [info.width, info.height, 1];
-
-            // ----------------- GPU側のバッファ
-            let upload_buffer: vulkano::buffer::Subbuffer<[u8]> = Buffer::new_slice(
-                memory_allocator.clone(),
-                BufferCreateInfo {
-                    usage: BufferUsage::TRANSFER_SRC,
-                    ..Default::default()
-                },
-                AllocationCreateInfo {
-                    memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                },
-                (info.width * info.height * 4) as DeviceSize,
-            )
-            .unwrap();
-
-            // write: ロックしてBufferを晒す
-            reader
-                .next_frame(&mut upload_buffer.write().unwrap())
-                .unwrap();
-
-            let image = Image::new(
-                memory_allocator,
-                ImageCreateInfo {
-                    image_type: ImageType::Dim2d,
-                    format: Format::R8G8B8A8_SRGB,
-                    extent,
-                    usage: ImageUsage::TRANSFER_SRC
-                        | ImageUsage::TRANSFER_DST
-                        | ImageUsage::SAMPLED,
-                    initial_layout: ImageLayout::TransferSrcOptimal,
-                    ..Default::default()
-                },
-                AllocationCreateInfo::default(),
-            )
-            .unwrap();
-
-            uploads
-                .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
-                    upload_buffer,
-                    image.clone(),
-                ))
-                .unwrap();
-
-            ImageView::new_default(image).unwrap()
-        };
-
-        let _ = uploads.build().unwrap().execute(queue.clone()).unwrap();
-    }
-
     pub struct ImageUploader {
         upload_buffer: Subbuffer<[u8]>,
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
-        instance: Arc<Instance>,
-        device: Arc<Device>,
         queue: Arc<Queue>,
         image: Arc<Image>,
         pixmap: *const Pixmap,
@@ -213,7 +60,7 @@ mod vulkan {
             let instance_flags_request =
                 compositor_interface.get_vulkan_instance_extensions_required()?;
             let mut instance_extensions =
-                InstanceExtensions::from_iter(instance_flags_request.iter().map(|s| s.as_str()));
+                InstanceExtensions::from_iter(instance_flags_request.iter().map(std::string::String::as_str));
 
             instance_extensions.ext_debug_utils = true;
 
@@ -234,7 +81,7 @@ mod vulkan {
                 InstanceCreateInfo {
                     flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                     enabled_extensions: instance_extensions,
-                    enabled_layers: enabled_layers,
+                    enabled_layers,
                     ..Default::default()
                 },
             )
@@ -302,7 +149,7 @@ mod vulkan {
                                 ),
                             )
                         },
-                    ))
+                    ));
                 };
             }
 
@@ -375,7 +222,7 @@ mod vulkan {
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
                 },
-                (width * height * 4) as DeviceSize,
+                DeviceSize::from(width * height * 4),
             )
             .unwrap();
 
@@ -395,21 +242,16 @@ mod vulkan {
             .unwrap();
 
             Ok(ImageUploader {
-                instance,
-                device,
                 queue,
-                // memory_allocator,
                 command_buffer_allocator,
                 upload_buffer,
                 image,
-                pixmap: pixmap as *const Pixmap,
+                pixmap: std::ptr::from_ref::<Pixmap>(pixmap),
             })
         }
 
         pub fn upload(&mut self, pixmap: &Pixmap) -> Arc<Image> {
-            if pixmap as *const Pixmap != self.pixmap {
-                panic!("pixmap mismatch");
-            }
+            assert!(std::ptr::from_ref::<Pixmap>(pixmap) == self.pixmap, "pixmap mismatch");
 
             let mut uploads = AutoCommandBufferBuilder::primary(
                 self.command_buffer_allocator.clone(),
@@ -437,17 +279,13 @@ mod vulkan {
                 .execute(self.queue.clone())
                 .unwrap();
 
-            return self.image.clone();
+            self.image.clone()
         }
 
-        pub fn queue<'a>(&'a self) -> &'a Queue {
+        pub fn queue(&self) -> &Queue {
             self.queue.as_ref()
         }
     }
-}
-
-struct App {
-
 }
 
 fn paint(pixmap: &mut Pixmap) {
@@ -461,14 +299,13 @@ fn paint(pixmap: &mut Pixmap) {
         const CENTER: f32 = 250.0;
         pb.move_to(CENTER + RADIUS, CENTER);
         for i in 1..8 {
-            let a = 2.6927937 * i as f32;
+            let a = 2.692_793_7 * i as f32;
             pb.line_to(CENTER + RADIUS * a.cos(), CENTER + RADIUS * a.sin());
         }
         pb.finish().unwrap()
     };
 
     let mut stroke = Stroke::default();
-    stroke.width = 6.0;
     stroke.line_cap = LineCap::Round;
     stroke.dash = StrokeDash::new(vec![20.0, 40.0], 0.0);
 
@@ -508,9 +345,10 @@ fn app() -> Result<()> {
         std::thread::sleep(std::time::Duration::from_millis(1000));
     }
 
-    overlay.hide()?;
-
-    Ok(())
+    /*
+        overlay.hide()?;
+        Ok(())
+    */
 }
 
 fn main() {

@@ -1,7 +1,7 @@
-use log::*;
+use log::debug;
 use anyhow::{anyhow, Result};
 
-use std::{alloc::System, ffi::{c_void, CStr}};
+use std::ffi::{c_void, CStr};
 use openvr_sys::{self as sys, VkDevice_T, VkInstance_T, VkPhysicalDevice_T, VkQueue_T};
 use vulkano::{
     device::{DeviceOwned, Queue},
@@ -61,7 +61,7 @@ fn get_interface<T>(interface_version: &[u8]) -> Result<&T> {
     let mut error = sys::EVRInitError_VRInitError_None;
 
     let result = unsafe {
-        sys::VR_GetGenericInterface(interface_version_str.as_ptr() as *const i8, &mut error)
+        sys::VR_GetGenericInterface(interface_version_str.as_ptr().cast::<i8>(), &mut error)
     };
 
     if error != sys::EVRInitError_VRInitError_None {
@@ -88,7 +88,7 @@ impl OpenVR {
         Ok(OpenVR { openvr })
     }
 
-    pub fn overlay<'a>(&'a self) -> Result<OverlayInterface<'a>> {
+    pub fn overlay(&self) -> Result<OverlayInterface<'_>> {
         let sys = get_interface::<sys::VR_IVROverlay_FnTable>(sys::IVROverlay_Version)?;
 
         Ok(OverlayInterface { sys })
@@ -132,7 +132,7 @@ impl CompositorInterface<'_> {
 
         unsafe {
             self.sys.GetVulkanInstanceExtensionsRequired.unwrap()(
-                extensions.as_mut_ptr() as *mut i8,
+                extensions.as_mut_ptr().cast::<i8>(),
                 4096,
                 /*extensions.len() as u32*/
             )
@@ -140,7 +140,7 @@ impl CompositorInterface<'_> {
 
         let result = CStr::from_bytes_until_nul(&extensions)?.to_string_lossy()
             .split_ascii_whitespace()
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
 
         debug!("Vulkan instance extensions: {:?}", result);
@@ -154,14 +154,14 @@ impl CompositorInterface<'_> {
         unsafe {
             self.sys.GetVulkanDeviceExtensionsRequired.unwrap()(
                 device.handle().as_raw() as *mut sys::VkPhysicalDevice_T,
-                extensions.as_mut_ptr() as *mut i8,
+                extensions.as_mut_ptr().cast::<i8>(),
                 4096,
             )
         };
 
         let result = CStr::from_bytes_until_nul(&extensions)?.to_string_lossy()
             .split_ascii_whitespace()
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
 
         debug!("Vulkan device extensions: {:?}", result);
@@ -187,8 +187,8 @@ impl OverlayInterface<'_> {
 
         let error = unsafe {
             self.sys.CreateOverlay.unwrap()(
-                overlay_key.as_ptr() as *mut i8,
-                overlay_name.as_ptr() as *mut i8,
+                overlay_key.as_ptr().cast_mut(),
+                overlay_name.as_ptr().cast_mut(),
                 &mut overlay_handle,
             )
         };
@@ -271,7 +271,7 @@ impl Overlay<'_> {
                 as *mut VkPhysicalDevice_T,
             m_pInstance: vulkan_image.device().instance().handle().as_raw() as *mut VkInstance_T,
             m_pQueue: queue.handle().as_raw() as *mut VkQueue_T,
-            m_nQueueFamilyIndex: queue.queue_family_index() as u32,
+            m_nQueueFamilyIndex: queue.queue_family_index(),
             m_nWidth: vulkan_image.extent()[0],
             m_nHeight: vulkan_image.extent()[1],
             m_nFormat: vulkan_image.format() as u32,
@@ -281,7 +281,7 @@ impl Overlay<'_> {
         debug!("{:?}", texture_pointer);
 
         let mut texture = sys::Texture_t {
-            handle: &mut texture_pointer as *mut _ as *mut std::os::raw::c_void,
+            handle: std::ptr::from_mut(&mut texture_pointer).cast::<std::os::raw::c_void>(),
             eType: texture.texture_type as i32,
             eColorSpace: texture.color_space as i32,
         };
@@ -289,7 +289,7 @@ impl Overlay<'_> {
         let error = unsafe {
             self.interface.sys.SetOverlayTexture.unwrap()(
                 self.overlay_handle,
-                &mut texture as *mut sys::Texture_t,
+                std::ptr::from_mut::<sys::Texture_t>(&mut texture),
             )
         };
 
