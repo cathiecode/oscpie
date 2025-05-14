@@ -315,6 +315,7 @@ mod vtree_microdom {
         component: RefCell<Box<dyn AnyComponent<LiteralNode = L>>>,
         vtree_node: vtree::Node<L>,
         rendered: Option<Rc<RefCell<InternalNode<L>>>>,
+        host_node: Option<Rc<RefCell<microdom::Node>>>,
     }
 
     impl InternalComponentNode<LiteralNode> {
@@ -329,6 +330,7 @@ mod vtree_microdom {
                     component: RefCell::from(component()),
                     vtree_node,
                     rendered: None,
+                    host_node: None,
                 }
             } else {
                 panic!("InternalComponentNode must be created with NodeType::Component");
@@ -343,7 +345,7 @@ mod vtree_microdom {
             {
                 self.component
                     .borrow_mut()
-                    .render(props, &self.vtree_node.children)
+                    .render(&props, &self.vtree_node.children)
             } else {
                 panic!("InternalComponentNode must be created with NodeType::Component");
             };
@@ -355,6 +357,40 @@ mod vtree_microdom {
             (**self.rendered.as_mut().unwrap())
                 .borrow_mut()
                 .mount(context)
+        }
+
+        fn receive(&mut self, context: &mut RenderingContext, next_node: vtree::Node<LiteralNode>) {
+            let prev_node = &self.vtree_node.node_type;
+            let component = &self.component;
+            let prev_rendered_component = &self.rendered;
+            let prev_rendered_element = &self.rendered;
+
+            self.vtree_node = next_node;
+            
+            // TODO: componentWillUpdate
+
+            let vtree::NodeType::Component {component, props, clone_props} = &self.vtree_node.node_type else {
+                panic!("InternalComponentNode must be created with NodeType::Component");
+            };
+
+            let children = &self.vtree_node.children;
+
+            let next_rendered_node = self.component.borrow_mut().render(props, children);
+
+            // TODO: element type comparison
+
+            if let Some(prev_rendered_component) = prev_rendered_component {
+                let prev_host_node = prev_rendered_component.borrow().get_host_node().unwrap();
+
+                prev_rendered_component.borrow_mut().unmount();
+                let mut next_rendered_component = instantiate_internal_component(next_rendered_node);
+
+                let next_node = next_rendered_component.mount(context);
+
+                self.rendered = Some(Rc::new(RefCell::new(next_rendered_component)));
+
+                // TODO: ReplaceChild
+            }
         }
 
         fn unmount(&mut self) {
@@ -379,7 +415,7 @@ mod vtree_microdom {
     #[derive(Debug)]
     struct InternalLiteralNode {
         vtree_node: vtree::Node<LiteralNode>,
-        bind_to: Option<Rc<RefCell<microdom::Node>>>,
+        host_node: Option<Rc<RefCell<microdom::Node>>>,
         children: Vec<Option<Rc<RefCell<InternalNode<LiteralNode>>>>>, // children: InternalNode<L>
     }
 
@@ -388,7 +424,7 @@ mod vtree_microdom {
             if let vtree::NodeType::Raw(_) = &vtree_node.node_type {
                 Self {
                     vtree_node,
-                    bind_to: None,
+                    host_node: None,
                     children: vec![],
                 }
             } else {
@@ -423,7 +459,7 @@ mod vtree_microdom {
                     })
                     .collect::<Vec<_>>();
 
-                self.bind_to = Some(Rc::new(RefCell::new(microdom::Node {
+                self.host_node = Some(Rc::new(RefCell::new(microdom::Node {
                     element_type: match literal_node {
                         LiteralNode::Div(attributes) => microdom::NodeType::Element {
                             element_type: microdom::ElementType::Div(attributes.clone()),
@@ -443,7 +479,7 @@ mod vtree_microdom {
                     },
                 })));
 
-                self.bind_to.as_ref().unwrap().clone()
+                self.host_node.as_ref().unwrap().clone()
             } else {
                 panic!("InternalLiteralNode must be created with NodeType::Raw");
             }
@@ -496,6 +532,29 @@ mod vtree_microdom {
                 InternalNode::Literal(internal_literal_node) => {
                     internal_literal_node.unmount();
                 }
+            }
+        }
+
+        fn get_component(&self) -> Option<&Rc<RefCell<InternalComponentNode<LiteralNode>>>> {
+            match self {
+                InternalNode::Component(component) => Some(component),
+                InternalNode::Literal(_) => None,
+            }
+        }
+
+        fn get_component_mut(
+            &mut self,
+        ) -> Option<&mut Rc<RefCell<InternalComponentNode<LiteralNode>>>> {
+            match self {
+                InternalNode::Component(component) => Some(component),
+                InternalNode::Literal(_) => None,
+            }
+        }
+
+        fn get_host_node(&self) -> Option<Rc<RefCell<microdom::Node>>> {
+            match self {
+                InternalNode::Component(component) => component.borrow().host_node.clone(),
+                InternalNode::Literal(literal_node) => literal_node.host_node.clone(),
             }
         }
     }
