@@ -1,12 +1,15 @@
-use log::debug;
 use anyhow::{anyhow, Result};
+use log::debug;
 
-use std::ffi::{c_void, CStr};
 use openvr_sys::{self as sys, VkDevice_T, VkInstance_T, VkPhysicalDevice_T, VkQueue_T};
+use std::{
+    ffi::{c_void, CStr},
+    rc::Rc,
+};
 use vulkano::{
     device::{DeviceOwned, Queue},
     image::Image,
-    Handle, VulkanObject,
+    Handle as _, VulkanObject,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -71,11 +74,34 @@ fn get_interface<T>(interface_version: &[u8]) -> Result<&T> {
     Ok(unsafe { &*(result as *const T) })
 }
 
-pub struct OpenVR {
+#[derive(Debug, Clone)]
+struct CastRc<T>
+where
+    T: 'static,
+{
+    rc: Rc<OpenVr>,
+    value: &'static T,
+}
+
+impl<T> CastRc<T> {
+    unsafe fn new(rc: Rc<OpenVr>, value: &'static T) -> Self {
+        CastRc { rc, value }
+    }
+
+    fn get(&self) -> &T {
+        self.value
+    }
+}
+
+#[derive(Debug)]
+pub struct OpenVr {
     openvr: isize,
 }
 
-impl OpenVR {
+#[derive(Clone)]
+pub struct Handle<T>(Rc<T>);
+
+impl Handle<OpenVr> {
     pub fn new(application_type: EVRApplicationType) -> Result<Self> {
         let mut error: openvr_sys::EVRInitError = openvr_sys::EVRInitError_VRInitError_None;
 
@@ -85,29 +111,35 @@ impl OpenVR {
             return Err(anyhow::anyhow!("Failed to initialize OpenVR: {}", error));
         }
 
-        Ok(OpenVR { openvr })
+        Ok(Self(Rc::new(OpenVr { openvr })))
     }
 
-    pub fn overlay(&self) -> Result<OverlayInterface<'_>> {
+    pub fn overlay(&self) -> Result<Handle<OverlayInterface>> {
         let sys = get_interface::<sys::VR_IVROverlay_FnTable>(sys::IVROverlay_Version)?;
 
-        Ok(OverlayInterface { sys })
+        Ok(Handle(Rc::new(OverlayInterface {
+            sys: unsafe { CastRc::new(self.0.clone(), sys) },
+        })))
     }
 
-    pub fn system(&self) -> Result<SystemInterface> {
+    pub fn system(&self) -> Result<Handle<SystemInterface>> {
         let sys = get_interface::<sys::VR_IVRSystem_FnTable>(sys::IVRSystem_Version)?;
 
-        Ok(SystemInterface { sys })
+        Ok(Handle(Rc::new(SystemInterface {
+            sys: unsafe { CastRc::new(self.0.clone(), sys) },
+        })))
     }
 
-    pub fn compositor(&self) -> Result<CompositorInterface> {
+    pub fn compositor(&self) -> Result<Handle<CompositorInterface>> {
         let sys = get_interface::<sys::VR_IVRCompositor_FnTable>(sys::IVRCompositor_Version)?;
 
-        Ok(CompositorInterface { sys })
+        Ok(Handle(Rc::new(CompositorInterface {
+            sys: unsafe { CastRc::new(self.0.clone(), sys) },
+        })))
     }
 }
 
-impl Drop for OpenVR {
+impl Drop for OpenVr {
     fn drop(&mut self) {
         debug!("Dropping OpenVR");
         unsafe {
@@ -116,29 +148,31 @@ impl Drop for OpenVR {
     }
 }
 
-pub struct SystemInterface<'a> {
-    sys: &'a sys::VR_IVRSystem_FnTable,
+pub struct SystemInterface {
+    sys: CastRc<sys::VR_IVRSystem_FnTable>,
 }
 
-impl SystemInterface<'_> {}
+impl SystemInterface {}
 
-pub struct CompositorInterface<'a> {
-    sys: &'a sys::VR_IVRCompositor_FnTable,
+#[derive(Debug, Clone)]
+pub struct CompositorInterface {
+    sys: CastRc<sys::VR_IVRCompositor_FnTable>,
 }
 
-impl CompositorInterface<'_> {
+impl Handle<CompositorInterface> {
     pub fn get_vulkan_instance_extensions_required(&self) -> Result<Vec<String>> {
         let mut extensions: [u8; 4096] = [0; 4096];
 
         unsafe {
-            self.sys.GetVulkanInstanceExtensionsRequired.unwrap()(
+            self.0.sys.get().GetVulkanInstanceExtensionsRequired.unwrap()(
                 extensions.as_mut_ptr().cast::<i8>(),
                 4096,
                 /*extensions.len() as u32*/
             )
         };
 
-        let result = CStr::from_bytes_until_nul(&extensions)?.to_string_lossy()
+        let result = CStr::from_bytes_until_nul(&extensions)?
+            .to_string_lossy()
             .split_ascii_whitespace()
             .map(std::string::ToString::to_string)
             .collect();
@@ -148,18 +182,22 @@ impl CompositorInterface<'_> {
         Ok(result)
     }
 
-    pub fn get_vulkan_device_extensions_required(&self, device: &vulkano::device::physical::PhysicalDevice) -> Result<Vec<String>> {
+    pub fn get_vulkan_device_extensions_required(
+        &self,
+        device: &vulkano::device::physical::PhysicalDevice,
+    ) -> Result<Vec<String>> {
         let mut extensions: [u8; 4096] = [0; 4096];
 
         unsafe {
-            self.sys.GetVulkanDeviceExtensionsRequired.unwrap()(
+            self.0.sys.get().GetVulkanDeviceExtensionsRequired.unwrap()(
                 device.handle().as_raw() as *mut sys::VkPhysicalDevice_T,
                 extensions.as_mut_ptr().cast::<i8>(),
                 4096,
             )
         };
 
-        let result = CStr::from_bytes_until_nul(&extensions)?.to_string_lossy()
+        let result = CStr::from_bytes_until_nul(&extensions)?
+            .to_string_lossy()
             .split_ascii_whitespace()
             .map(std::string::ToString::to_string)
             .collect();
@@ -170,11 +208,12 @@ impl CompositorInterface<'_> {
     }
 }
 
-pub struct OverlayInterface<'a> {
-    sys: &'a sys::VR_IVROverlay_FnTable,
+#[derive(Clone)]
+pub struct OverlayInterface {
+    sys: CastRc<sys::VR_IVROverlay_FnTable>,
 }
 
-impl OverlayInterface<'_> {
+impl Handle<OverlayInterface> {
     pub fn create(&self, overlay_key: &str, overlay_name: &str) -> Result<Overlay> {
         let Ok(overlay_key) = std::ffi::CString::new(overlay_key) else {
             return Err(anyhow!("Failed to create overlay key"));
@@ -186,7 +225,7 @@ impl OverlayInterface<'_> {
         let mut overlay_handle: sys::VROverlayHandle_t = 0;
 
         let error = unsafe {
-            self.sys.CreateOverlay.unwrap()(
+            self.0.sys.get().CreateOverlay.unwrap()(
                 overlay_key.as_ptr().cast_mut(),
                 overlay_name.as_ptr().cast_mut(),
                 &mut overlay_handle,
@@ -198,20 +237,20 @@ impl OverlayInterface<'_> {
         }
 
         Ok(Overlay {
-            interface: self,
+            interface: self.clone(),
             overlay_handle,
         })
     }
 }
 
-pub struct Overlay<'a> {
-    interface: &'a OverlayInterface<'a>,
+pub struct Overlay {
+    interface: Handle<OverlayInterface>,
     overlay_handle: sys::VROverlayHandle_t,
 }
 
-impl Overlay<'_> {
+impl Overlay {
     pub fn show(&self) -> Result<()> {
-        let error = unsafe { self.interface.sys.ShowOverlay.unwrap()(self.overlay_handle) };
+        let error = unsafe { self.interface.0.sys.get().ShowOverlay.unwrap()(self.overlay_handle) };
 
         if error != sys::EVROverlayError_VROverlayError_None {
             return Err(anyhow::anyhow!("Failed to show overlay: {}", error));
@@ -221,7 +260,7 @@ impl Overlay<'_> {
     }
 
     pub fn hide(&self) -> Result<()> {
-        let error = unsafe { self.interface.sys.HideOverlay.unwrap()(self.overlay_handle) };
+        let error = unsafe { self.interface.0.sys.get().HideOverlay.unwrap()(self.overlay_handle) };
 
         if error != sys::EVROverlayError_VROverlayError_None {
             return Err(anyhow::anyhow!("Failed to hide overlay: {}", error));
@@ -238,7 +277,7 @@ impl Overlay<'_> {
         bytes_per_pixel: u32,
     ) -> Result<()> {
         let error = unsafe {
-            self.interface.sys.SetOverlayRaw.unwrap()(
+            self.interface.0.sys.get().SetOverlayRaw.unwrap()(
                 self.overlay_handle,
                 buffer.as_ptr() as *mut c_void,
                 width,
@@ -287,7 +326,7 @@ impl Overlay<'_> {
         };
 
         let error = unsafe {
-            self.interface.sys.SetOverlayTexture.unwrap()(
+            self.interface.0.sys.get().SetOverlayTexture.unwrap()(
                 self.overlay_handle,
                 std::ptr::from_mut::<sys::Texture_t>(&mut texture),
             )
@@ -301,21 +340,24 @@ impl Overlay<'_> {
     }
 
     pub fn wait_frame_sync(&self, timeout: u32) -> Result<()> {
-        let error = unsafe { self.interface.sys.WaitFrameSync.unwrap()(timeout) };
+        let error = unsafe { self.interface.0.sys.get().WaitFrameSync.unwrap()(timeout) };
 
         if error != sys::EVROverlayError_VROverlayError_None {
-            return Err(anyhow::anyhow!("Failed to wait for overlay frame: {}", error));
+            return Err(anyhow::anyhow!(
+                "Failed to wait for overlay frame: {}",
+                error
+            ));
         }
 
         Ok(())
     }
 }
 
-impl Drop for Overlay<'_> {
+impl Drop for Overlay {
     fn drop(&mut self) {
         debug!("Dropping Overlay");
         unsafe {
-            self.interface.sys.DestroyOverlay.unwrap()(self.overlay_handle);
+            self.interface.0.sys.get().DestroyOverlay.unwrap()(self.overlay_handle);
         }
     }
 }

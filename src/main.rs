@@ -1,33 +1,27 @@
 use anyhow::Result;
 use log::debug;
 
-use tiny_skia::{LineCap, Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform};
+use openvr::Handle;
+use tiny_skia::{Color, LineCap, Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform};
 mod openvr;
 
 mod vulkan {
     use anyhow::Result;
     use log::{debug, log_enabled, trace};
-    use std::{
-        default::Default,
-        mem::forget,
-        sync::Arc,
-    };
+    use std::{default::Default, mem::forget, sync::Arc};
     use tiny_skia::Pixmap;
     use vulkano::{
         buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
         command_buffer::{
             allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-            CommandBufferUsage, CopyBufferToImageInfo,
-            PrimaryCommandBufferAbstract,
+            CommandBufferUsage, CopyBufferToImageInfo, PrimaryCommandBufferAbstract,
         },
         device::{
             physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
             QueueCreateInfo, QueueFlags,
         },
         format::Format,
-        image::{
-            Image, ImageCreateInfo, ImageType, ImageUsage,
-        },
+        image::{Image, ImageCreateInfo, ImageType, ImageUsage},
         instance::{
             debug::{
                 DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
@@ -39,7 +33,7 @@ mod vulkan {
         DeviceSize, VulkanLibrary,
     };
 
-    use crate::openvr::CompositorInterface;
+    use crate::openvr::{CompositorInterface, Handle};
 
     pub struct ImageUploader {
         upload_buffer: Subbuffer<[u8]>,
@@ -50,7 +44,10 @@ mod vulkan {
     }
 
     impl ImageUploader {
-        pub fn new(pixmap: &Pixmap, compositor_interface: &CompositorInterface) -> Result<Self> {
+        pub fn new(
+            pixmap: &Pixmap,
+            compositor_interface: Handle<CompositorInterface>,
+        ) -> Result<Self> {
             let width = pixmap.width();
             let height = pixmap.height();
             let extent = [width, height, 1];
@@ -59,8 +56,11 @@ mod vulkan {
 
             let instance_flags_request =
                 compositor_interface.get_vulkan_instance_extensions_required()?;
-            let mut instance_extensions =
-                InstanceExtensions::from_iter(instance_flags_request.iter().map(std::string::String::as_str));
+            let mut instance_extensions = InstanceExtensions::from_iter(
+                instance_flags_request
+                    .iter()
+                    .map(std::string::String::as_str),
+            );
 
             instance_extensions.ext_debug_utils = true;
 
@@ -181,6 +181,7 @@ mod vulkan {
 
             let device_extensions_request =
                 compositor_interface.get_vulkan_device_extensions_required(&physical_device)?;
+
             let device_extensions = DeviceExtensions::from_iter(
                 device_extensions_request
                     .iter()
@@ -251,7 +252,10 @@ mod vulkan {
         }
 
         pub fn upload(&mut self, pixmap: &Pixmap) -> Arc<Image> {
-            assert!(std::ptr::from_ref::<Pixmap>(pixmap) == self.pixmap, "pixmap mismatch");
+            assert!(
+                std::ptr::from_ref::<Pixmap>(pixmap) == self.pixmap,
+                "pixmap mismatch"
+            );
 
             let mut uploads = AutoCommandBufferBuilder::primary(
                 self.command_buffer_allocator.clone(),
@@ -288,48 +292,75 @@ mod vulkan {
     }
 }
 
-fn paint(pixmap: &mut Pixmap) {
-    let mut paint = Paint::default();
-    paint.set_color_rgba8(0, 127, 0, 200);
-    paint.anti_alias = true;
-
-    let path = {
-        let mut pb = PathBuilder::new();
-        const RADIUS: f32 = 250.0;
-        const CENTER: f32 = 250.0;
-        pb.move_to(CENTER + RADIUS, CENTER);
-        for i in 1..8 {
-            let a = 2.692_793_7 * i as f32;
-            pb.line_to(CENTER + RADIUS * a.cos(), CENTER + RADIUS * a.sin());
-        }
-        pb.finish().unwrap()
-    };
-
-    let mut stroke = Stroke::default();
-    stroke.line_cap = LineCap::Round;
-    stroke.dash = StrokeDash::new(vec![20.0, 40.0], 0.0);
-
-    pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+trait App {
+    fn on_update(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
-fn app() -> Result<()> {
-    let openvr = openvr::OpenVR::new(openvr::EVRApplicationType::Overlay)?;
-    let overlay_interface = openvr.overlay()?;
-    let compositor = openvr.compositor()?;
+struct AppImpl {
+    openvr: Handle<openvr::OpenVr>,
+    overlay: openvr::Overlay,
+    overlay_interface: Handle<openvr::OverlayInterface>,
+    compositor: Handle<openvr::CompositorInterface>,
+    pixmap: Box<Pixmap>,
+    uploader: vulkan::ImageUploader,
+}
 
-    let overlay = overlay_interface.create("oscpie_overlay_2", "OSCPie Overlay")?;
+impl AppImpl {
+    fn new() -> Result<Self> {
+        let openvr = Handle::<openvr::OpenVr>::new(openvr::EVRApplicationType::Overlay)?;
+        let overlay_interface = openvr.overlay()?;
+        let compositor = openvr.compositor()?;
+        let overlay = overlay_interface.create("oscpie_overlay_2", "OSCPie Overlay")?;
+        let pixmap = Box::new(Pixmap::new(512, 512).unwrap());
+        let uploader = vulkan::ImageUploader::new(&pixmap, compositor.clone())?;
 
-    overlay.show()?;
+        overlay.show()?;
 
-    let mut pixmap: Pixmap = Pixmap::new(512, 512).unwrap();
-    let mut uploader = vulkan::ImageUploader::new(&pixmap, &compositor)?;
+        Ok(Self {
+            openvr,
+            overlay,
+            overlay_interface,
+            compositor,
+            pixmap,
+            uploader,
+        })
+    }
+}
 
-    loop {
-        paint(&mut pixmap);
+impl App for AppImpl {
+    fn on_update(&mut self) -> Result<()> {
+        let mut paint = Paint::default();
+        paint.anti_alias = true;
 
-        let image = uploader.upload(&pixmap);
+        self.pixmap.fill(Color::from_rgba8(0, 0, 0, 255));
 
-        let texture_handle = openvr::TextureHandle::Vulkan(image.as_ref(), uploader.queue());
+        paint.set_color_rgba8(0, 127, 0, 200);
+
+        let path = {
+            let mut pb = PathBuilder::new();
+            const RADIUS: f32 = 250.0;
+            const CENTER: f32 = 250.0;
+            pb.move_to(CENTER + RADIUS, CENTER);
+            for i in 1..8 {
+                let offset = 0; // (std::time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64() % 60f64) / 60f64 * 6.283f64;
+                let a = 2.692_793_7 * i as f32 + offset as f32;
+                pb.line_to(CENTER + RADIUS * a.cos(), CENTER + RADIUS * a.sin());
+            }
+            pb.finish().unwrap()
+        };
+
+        let mut stroke = Stroke::default();
+        stroke.line_cap = LineCap::Round;
+        stroke.dash = StrokeDash::new(vec![20.0, 40.0], 0.0);
+
+        self.pixmap
+            .stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+
+        let image = self.uploader.upload(&self.pixmap);
+
+        let texture_handle = openvr::TextureHandle::Vulkan(image.as_ref(), self.uploader.queue());
 
         let mut texture = openvr::Texture {
             handle: texture_handle,
@@ -340,19 +371,24 @@ fn app() -> Result<()> {
         // TODO: transfer data via Vulkan, OpenGL, or DirectX
 
         debug!("texture: {:?}", texture);
-        overlay.set_overlay_texture(&mut texture)?;
+        self.overlay.set_overlay_texture(&mut texture)?;
 
-        std::thread::sleep(std::time::Duration::from_millis(1000));
-    }
+        // std::thread::sleep(std::time::Duration::from_millis(1000));
+        self.overlay.wait_frame_sync(100)?;
 
-    /*
-        overlay.hide()?;
         Ok(())
-    */
+    }
+}
+
+fn app() -> Result<()> {
+    let mut app = AppImpl::new()?;
+
+    loop {
+        app.on_update()?;
+    }
 }
 
 fn main() {
     env_logger::init();
     app().unwrap();
-    // vulkan_image::main();
 }
