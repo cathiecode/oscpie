@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use log::debug;
+use log::{debug, trace};
 
 use openvr_sys::{self as sys, VkDevice_T, VkInstance_T, VkPhysicalDevice_T, VkQueue_T};
 use std::{
@@ -286,7 +286,7 @@ impl Overlay {
             )
         };
 
-        debug!(
+        trace!(
             "SetOverlayRaw: {}, {} {} {} {}",
             self.overlay_handle, width, height, bytes_per_pixel, error
         );
@@ -317,7 +317,7 @@ impl Overlay {
             m_nSampleCount: vulkan_image.samples() as u32,
         };
 
-        debug!("{:?}", texture_pointer);
+        trace!("{:?}", texture_pointer);
 
         let mut texture = sys::Texture_t {
             handle: std::ptr::from_mut(&mut texture_pointer).cast::<std::os::raw::c_void>(),
