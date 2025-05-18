@@ -292,50 +292,50 @@ mod vulkan {
     }
 }
 
+type Axis1D = f32;
+
+struct Axis2D {
+    x: f32,
+    y: f32,
+}
+
+struct InputState {
+    trigger: Axis1D,
+    stick: Axis2D,
+}
+
 trait App {
-    fn on_update(&mut self) -> Result<()> {
+    fn on_update(&mut self, input: &InputState) -> Result<()> {
+        Ok(())
+    }
+    fn on_render(&mut self, pixmap: &mut Pixmap) -> Result<()> {
         Ok(())
     }
 }
 
 struct AppImpl {
-    openvr: Handle<openvr::OpenVr>,
-    overlay: openvr::Overlay,
-    overlay_interface: Handle<openvr::OverlayInterface>,
-    compositor: Handle<openvr::CompositorInterface>,
-    pixmap: Box<Pixmap>,
-    uploader: vulkan::ImageUploader,
+    
 }
 
 impl AppImpl {
     fn new() -> Result<Self> {
-        let openvr = Handle::<openvr::OpenVr>::new(openvr::EVRApplicationType::Overlay)?;
-        let overlay_interface = openvr.overlay()?;
-        let compositor = openvr.compositor()?;
-        let overlay = overlay_interface.create("oscpie_overlay", "OSCpie Overlay")?;
-        let pixmap = Box::new(Pixmap::new(512, 512).unwrap());
-        let uploader = vulkan::ImageUploader::new(&pixmap, compositor.clone())?;
-
-        overlay.show()?;
-
-        Ok(Self {
-            openvr,
-            overlay,
-            overlay_interface,
-            compositor,
-            pixmap,
-            uploader,
-        })
+        Ok(AppImpl {})
     }
 }
 
 impl App for AppImpl {
-    fn on_update(&mut self) -> Result<()> {
+    fn on_update(&mut self, input: &InputState) -> Result<()> {
+        Ok(())
+    }
+
+    fn on_render(&mut self, pixmap: &mut Pixmap) -> Result<()> {
+        // TODO: Skip rendering if no input changes
+
+        // Rendering
+        pixmap.fill(Color::from_rgba8(0, 0, 0, 255));
+
         let mut paint = Paint::default();
         paint.anti_alias = true;
-
-        self.pixmap.fill(Color::from_rgba8(0, 0, 0, 255));
-
         paint.set_color_rgba8(0, 127, 0, 200);
 
         let path = {
@@ -344,7 +344,7 @@ impl App for AppImpl {
             const CENTER: f32 = 250.0;
             pb.move_to(CENTER + RADIUS, CENTER);
             for i in 1..8 {
-                let offset = 0; // (std::time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64() % 60f64) / 60f64 * 6.283f64;
+                let offset = 0;
                 let a = 2.692_793_7 * i as f32 + offset as f32;
                 pb.line_to(CENTER + RADIUS * a.cos(), CENTER + RADIUS * a.sin());
             }
@@ -355,26 +355,8 @@ impl App for AppImpl {
         stroke.line_cap = LineCap::Round;
         stroke.dash = StrokeDash::new(vec![20.0, 40.0], 0.0);
 
-        self.pixmap
+        pixmap
             .stroke_path(&path, &paint, &stroke, Transform::identity(), None);
-
-        let image = self.uploader.upload(&self.pixmap);
-
-        let texture_handle = openvr::TextureHandle::Vulkan(image.as_ref(), self.uploader.queue());
-
-        let mut texture = openvr::Texture {
-            handle: texture_handle,
-            texture_type: openvr::TextureType::Vulkan,
-            color_space: openvr::ColorSpace::Auto,
-        };
-
-        // TODO: transfer data via Vulkan, OpenGL, or DirectX
-
-        debug!("texture: {:?}", texture);
-        self.overlay.set_overlay_texture(&mut texture)?;
-
-        // std::thread::sleep(std::time::Duration::from_millis(1000));
-        self.overlay.wait_frame_sync(100)?;
 
         Ok(())
     }
@@ -383,8 +365,29 @@ impl App for AppImpl {
 fn app() -> Result<()> {
     let mut app = AppImpl::new()?;
 
+    let openvr = Handle::<openvr::OpenVr>::new(openvr::EVRApplicationType::Overlay)?;
+    let overlay_interface = openvr.overlay()?;
+    let compositor = openvr.compositor()?;
+    let overlay = overlay_interface.create("oscpie_overlay", "OSCpie Overlay")?;
+    let mut pixmap = Pixmap::new(800, 600).unwrap();
+    let mut uploader = vulkan::ImageUploader::new(&pixmap, compositor.clone())?;
+
     loop {
-        app.on_update()?;
+        app.on_render(&mut pixmap)?;
+
+        let image = uploader.upload(&pixmap);
+
+        let texture_handle = openvr::TextureHandle::Vulkan(image.as_ref(), uploader.queue());
+
+        let mut texture = openvr::Texture {
+            handle: texture_handle,
+            texture_type: openvr::TextureType::Vulkan,
+            color_space: openvr::ColorSpace::Auto,
+        };
+
+        overlay.set_overlay_texture(&mut texture)?;
+
+        overlay.wait_frame_sync(100)?;
     }
 }
 
