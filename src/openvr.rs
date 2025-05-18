@@ -177,7 +177,7 @@ impl Handle<CompositorInterface> {
             .map(std::string::ToString::to_string)
             .collect();
 
-        debug!("Vulkan instance extensions: {:?}", result);
+        debug!("Vulkan instance extensions: {result:?}");
 
         Ok(result)
     }
@@ -202,7 +202,7 @@ impl Handle<CompositorInterface> {
             .map(std::string::ToString::to_string)
             .collect();
 
-        debug!("Vulkan device extensions: {:?}", result);
+        debug!("Vulkan device extensions: {result:?}");
 
         Ok(result)
     }
@@ -317,7 +317,7 @@ impl Overlay {
             m_nSampleCount: vulkan_image.samples() as u32,
         };
 
-        trace!("{:?}", texture_pointer);
+        trace!("{texture_pointer:?}");
 
         let mut texture = sys::Texture_t {
             handle: std::ptr::from_mut(&mut texture_pointer).cast::<std::os::raw::c_void>(),

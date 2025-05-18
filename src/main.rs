@@ -1,5 +1,4 @@
 use anyhow::Result;
-use log::debug;
 
 use openvr::Handle;
 use tiny_skia::{Color, LineCap, Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform};
@@ -188,7 +187,7 @@ mod vulkan {
                     .map(|s: &String| s.as_str()),
             );
 
-            debug!("Vulkan device extensions: {:?}", device_extensions);
+            debug!("Vulkan device extensions: {device_extensions:?}");
 
             let (device, mut queues) = Device::new(
                 physical_device.clone(),
