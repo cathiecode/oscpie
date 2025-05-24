@@ -1,0 +1,33 @@
+{
+    "image": "spri.png",
+    "sprites": {
+        "s": {
+            "name": "s",
+            "width": 32,
+            "height": 32,
+            "x_start": 0,
+            "y_start": 0
+        },
+        "p": {
+            "name": "p",
+            "width": 32,
+            "height": 32,
+            "x_start": 32,
+            "y_start": 0
+        },
+        "r": {
+            "name": "c",
+            "width": 32,
+            "height": 32,
+            "x_start": 0,
+            "y_start": 32
+        },
+        "i": {
+            "name": "i",
+            "width": 32,
+            "height": 32,
+            "x_start": 32,
+            "y_start": 32
+        }
+    }
+}
