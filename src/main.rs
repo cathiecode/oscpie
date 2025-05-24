@@ -118,7 +118,7 @@ fn app() -> Result<()> {
     let openvr = openvr::Handle::<openvr::OpenVr>::new(openvr::EVRApplicationType::Overlay)?;
     let overlay_interface = openvr.overlay()?;
     let compositor = openvr.compositor()?;
-    let overlay = overlay_interface.create("oscpie_overlay", "OSCpie Overlay")?;
+    let overlay = overlay_interface.create("oscpie_overlay", "OSCPie Overlay")?;
     let mut pixmap = Pixmap::new(512, 512).unwrap();
     let mut uploader = vulkan::ImageUploader::new(&pixmap, compositor.clone())?;
 
