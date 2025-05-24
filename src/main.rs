@@ -52,7 +52,7 @@ impl AppImpl {
     ) -> pie_menu::PieMenuComponent {
         let center_x = 256.0;
         let center_y = 256.0;
-        let radius = 256.0;
+        let radius = 256.0 * 0.9;
 
         let menu: Menu = configuration.menus.get(menu_id).unwrap().clone().into(); // OPTIMIZE: do not clone
 

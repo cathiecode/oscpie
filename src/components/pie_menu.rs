@@ -1,4 +1,4 @@
-use tiny_skia::{Paint, Pixmap, Rect, Transform};
+use tiny_skia::{Pixmap, Rect, Transform};
 
 use crate::{component::Component, prelude::*};
 
@@ -70,21 +70,64 @@ impl PieMenuComponent {
     }
 
     pub fn render(&self, pixmap: &mut Pixmap) {
-        let mut paint = Paint::default();
-        paint.set_color(tiny_skia::Color::from_rgba(1.0, 1.0, 1.0, 1.0).unwrap());
+        // Background
+        {
+            let mut paint = default_paint();
+            paint.set_color(tiny_skia::Color::from_rgba(0.1, 0.1, 0.2, 0.8).unwrap());
 
-        let x = self.input_angle.cos() * self.input_magnitude * self.radius;
-        let y = self.input_angle.sin() * self.input_magnitude * self.radius;
+            let path =
+                tiny_skia::PathBuilder::from_circle(self.center_x, self.center_y, self.radius)
+                    .unwrap();
 
-        pixmap.fill_rect(
-            Rect::from_ltrb(x - 10.0, y - 10.0, x + 10.0, y + 10.0).unwrap(),
-            &paint,
-            Transform::from_translate(self.center_x, self.center_y),
-            None,
-        );
+            pixmap.fill_path(
+                &path,
+                &paint,
+                tiny_skia::FillRule::Winding,
+                Transform::from_translate(0.0, 0.0),
+                None,
+            );
+        }
 
+        // Items
         for item in &self.items {
             item.render(pixmap);
+        }
+
+        // Center
+        {
+            let mut paint = default_paint();
+            paint.set_color(tiny_skia::Color::from_rgba(0.1, 0.1, 0.2, 1.0).unwrap());
+
+            let path = tiny_skia::PathBuilder::from_circle(
+                self.center_x,
+                self.center_y,
+                self.radius * 0.3,
+            )
+            .unwrap();
+
+            pixmap.fill_path(
+                &path,
+                &paint,
+                tiny_skia::FillRule::Winding,
+                Transform::from_translate(0.0, 0.0),
+                None,
+            );
+        }
+
+        // Stick
+        {
+            let mut paint = default_paint();
+            paint.set_color(tiny_skia::Color::from_rgba(1.0, 1.0, 1.0, 1.0).unwrap());
+
+            let x = self.input_angle.cos() * self.input_magnitude * self.radius;
+            let y = self.input_angle.sin() * self.input_magnitude * self.radius;
+
+            pixmap.fill_rect(
+                Rect::from_ltrb(x - 10.0, y - 10.0, x + 10.0, y + 10.0).unwrap(),
+                &paint,
+                Transform::from_translate(self.center_x, self.center_y),
+                None,
+            );
         }
     }
 }
@@ -98,7 +141,7 @@ mod stories {
     fn pie_menu() -> PieMenuComponent {
         let center_x = 256.0;
         let center_y = 256.0;
-        let radius = 256.0;
+        let radius = 256.0 * 0.9;
 
         let menu = Menu {
             items: vec![
@@ -124,7 +167,7 @@ mod stories {
     fn story_pie_menu() {
         story("pie_menu", |pixmap| {
             let mut pie_menu = pie_menu();
-            pie_menu.update(&Props::new(PieMenuInput::new(0.0, 1.0, 0.0)));
+            pie_menu.update(&Props::new(PieMenuInput::new(0.1, 1.0, 0.0)));
             pie_menu.render(pixmap);
         });
     }
@@ -133,7 +176,7 @@ mod stories {
     fn story_pie_menu_hover() {
         story("pie_menu_hover", |pixmap| {
             let mut pie_menu = pie_menu();
-            pie_menu.update(&Props::new(PieMenuInput::new(0.0, 1.0, 0.0)));
+            pie_menu.update(&Props::new(PieMenuInput::new(0.1, 1.0, 0.0)));
             pie_menu.render(pixmap);
         });
     }
@@ -142,7 +185,7 @@ mod stories {
     fn story_pie_menu_click() {
         story("pie_menu_click", |pixmap| {
             let mut pie_menu = pie_menu();
-            pie_menu.update(&Props::new(PieMenuInput::new(0.0, 1.0, 1.0)));
+            pie_menu.update(&Props::new(PieMenuInput::new(0.1, 1.0, 1.0)));
             pie_menu.render(pixmap);
         });
     }

@@ -1,3 +1,5 @@
+use tiny_skia::Paint;
+
 pub fn lerp<T>(start: T, end: T, t: f32) -> T
 where
     T: Copy + std::ops::Add<Output = T> + std::ops::Mul<f32, Output = T>,
@@ -90,4 +92,8 @@ impl IntervalTimer {
 
         true
     }
+}
+
+pub fn default_paint<'a>() -> Paint<'a> {
+    Paint::default()
 }

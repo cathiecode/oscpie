@@ -1,6 +1,6 @@
 use crate::component::Component;
 use crate::prelude::*;
-use tiny_skia::{FillRule, Paint, Pixmap, Transform};
+use tiny_skia::{FillRule, Pixmap, Transform};
 
 pub struct Props<'a> {
     pub pie_menu_input: &'a PieMenuInput,
@@ -91,54 +91,78 @@ impl Component for PieMenuItemComponent {
         }
     }
     fn render(&self, pixmap: &mut Pixmap) {
-        let path = {
-            let mut pb = tiny_skia::PathBuilder::new();
-            pb.move_to(0.0, 0.0);
-            pb.line_to(self.end_angle.cos() * 256.0, self.end_angle.sin() * 256.0);
-            pb.line_to(
-                lerp(self.end_angle, self.start_angle, 0.25).cos() * 256.0,
-                lerp(self.end_angle, self.start_angle, 0.25).sin() * 256.0,
-            );
-
-            pb.line_to(
-                lerp(self.end_angle, self.start_angle, 0.5).cos() * 256.0,
-                lerp(self.end_angle, self.start_angle, 0.5).sin() * 256.0,
-            );
-            pb.line_to(
-                lerp(self.end_angle, self.start_angle, 0.75).cos() * 256.0,
-                lerp(self.end_angle, self.start_angle, 0.75).sin() * 256.0,
-            );
-            pb.line_to(
-                self.start_angle.cos() * 256.0,
-                self.start_angle.sin() * 256.0,
-            );
-            pb.line_to(0.0, 0.0);
-
-            pb.finish().unwrap()
-        };
-
         let transform = Transform::from_translate(self.center_x, self.center_y);
 
-        let mut paint = Paint::default();
+        // Highlight
+        {
+            let path = {
+                let mut pb = tiny_skia::PathBuilder::new();
+                pb.move_to(0.0, 0.0);
+                pb.line_to(
+                    self.end_angle.cos() * self.radius,
+                    self.end_angle.sin() * self.radius,
+                );
+                pb.line_to(
+                    lerp(self.end_angle, self.start_angle, 0.25).cos() * self.radius,
+                    lerp(self.end_angle, self.start_angle, 0.25).sin() * self.radius,
+                );
 
-        // Draw the highlight
-        match self.highlight {
-            Highlight::Soft => {
-                paint.set_color_rgba8(255, 255, 0, 128);
-                pixmap.fill_path(&path, &paint, FillRule::EvenOdd, transform, None);
+                pb.line_to(
+                    lerp(self.end_angle, self.start_angle, 0.5).cos() * self.radius,
+                    lerp(self.end_angle, self.start_angle, 0.5).sin() * self.radius,
+                );
+                pb.line_to(
+                    lerp(self.end_angle, self.start_angle, 0.75).cos() * self.radius,
+                    lerp(self.end_angle, self.start_angle, 0.75).sin() * self.radius,
+                );
+                pb.line_to(
+                    self.start_angle.cos() * self.radius,
+                    self.start_angle.sin() * self.radius,
+                );
+                pb.line_to(0.0, 0.0);
+
+                pb.finish().unwrap()
+            };
+
+            let mut paint = default_paint();
+
+            // Draw the highlight
+            match self.highlight {
+                Highlight::Soft => {
+                    paint.set_color_rgba8(255, 255, 0, 128);
+                    pixmap.fill_path(&path, &paint, FillRule::EvenOdd, transform, None);
+                }
+                Highlight::Hard => {
+                    paint.set_color_rgba8(255, 255, 0, 255);
+                    pixmap.fill_path(&path, &paint, FillRule::EvenOdd, transform, None);
+                }
+                _ => {}
             }
-            Highlight::Hard => {
-                paint.set_color_rgba8(255, 255, 0, 255);
-                pixmap.fill_path(&path, &paint, FillRule::EvenOdd, transform, None);
-            }
-            _ => {}
         }
 
-        // Draw the outline
+        // Separate line
         {
-            let mut paint = Paint::default();
-            let stroke = tiny_skia::Stroke::default();
-            paint.set_color_rgba8(0, 255, 0, 255);
+            let path = {
+                let mut pb = tiny_skia::PathBuilder::new();
+
+                pb.move_to(
+                    self.start_angle.cos() * self.radius * 0.4,
+                    self.start_angle.sin() * self.radius * 0.4,
+                );
+
+                pb.line_to(
+                    self.start_angle.cos() * self.radius * 0.9,
+                    self.start_angle.sin() * self.radius * 0.9,
+                );
+
+                pb.finish().unwrap()
+            };
+
+            let mut paint = default_paint();
+            let mut stroke = tiny_skia::Stroke::default();
+            stroke.width = 4.0;
+
+            paint.set_color_rgba8(255, 255, 255, 255);
             pixmap.stroke_path(&path, &paint, &stroke, transform, None);
         }
     }
