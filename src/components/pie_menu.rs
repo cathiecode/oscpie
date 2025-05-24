@@ -88,3 +88,62 @@ impl PieMenuComponent {
         }
     }
 }
+
+#[cfg(test)]
+mod stories {
+    pub use super::*;
+    pub use crate::prelude::*;
+    use crate::story::story;
+
+    fn pie_menu() -> PieMenuComponent {
+        let center_x = 256.0;
+        let center_y = 256.0;
+        let radius = 256.0;
+
+        let menu = Menu {
+            items: vec![
+                MenuItem {
+                    action: MenuItemAction::Noop,
+                },
+                MenuItem {
+                    action: MenuItemAction::Noop,
+                },
+                MenuItem {
+                    action: MenuItemAction::Noop,
+                },
+                MenuItem {
+                    action: MenuItemAction::Noop,
+                },
+            ],
+        };
+
+        PieMenuComponent::new(center_x, center_y, radius, menu)
+    }
+
+    #[test]
+    fn story_pie_menu() {
+        story("pie_menu", |pixmap| {
+            let mut pie_menu = pie_menu();
+            pie_menu.update(&Props::new(PieMenuInput::new(0.0, 1.0, 0.0)));
+            pie_menu.render(pixmap);
+        });
+    }
+
+    #[test]
+    fn story_pie_menu_hover() {
+        story("pie_menu_hover", |pixmap| {
+            let mut pie_menu = pie_menu();
+            pie_menu.update(&Props::new(PieMenuInput::new(0.0, 1.0, 0.0)));
+            pie_menu.render(pixmap);
+        });
+    }
+
+    #[test]
+    fn story_pie_menu_click() {
+        story("pie_menu_click", |pixmap| {
+            let mut pie_menu = pie_menu();
+            pie_menu.update(&Props::new(PieMenuInput::new(0.0, 1.0, 1.0)));
+            pie_menu.render(pixmap);
+        });
+    }
+}
