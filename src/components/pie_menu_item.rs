@@ -239,7 +239,7 @@ mod stories {
     // NOTE: Allow unused_imports to import Component trait
     #![allow(unused_imports)]
     pub use crate::component::Component;
-    use crate::types::PieMenuInput;
+    use crate::{story::story, types::PieMenuInput};
 
     use super::{CallbackProps, MenuId, MenuItemAction, PieMenuItemComponent, Pixmap, Props};
     use std::{cell::RefCell, f32::consts::PI, path::PathBuf, rc::Rc};
@@ -270,27 +270,6 @@ mod stories {
             action,
             callback,
         )
-    }
-
-    fn pixmap() -> Pixmap {
-        let mut pixmap = Pixmap::new(512, 512).unwrap();
-        pixmap.fill(tiny_skia::Color::from_rgba8(255, 255, 255, 255));
-        pixmap
-    }
-
-    fn save_pixmap(pixmap: &Pixmap, filename: &str) {
-        pixmap
-            .save_png(PathBuf::from("stories/".to_string() + filename))
-            .unwrap();
-    }
-
-    fn story<F>(name: &str, f: F)
-    where
-        F: FnOnce(&mut Pixmap),
-    {
-        let mut pixmap = pixmap();
-        f(&mut pixmap);
-        save_pixmap(&pixmap, format!("{name}.png").as_str());
     }
 
     #[test]
