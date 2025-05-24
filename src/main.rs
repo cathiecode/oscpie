@@ -1,377 +1,132 @@
-use anyhow::Result;
-
-use openvr::Handle;
-use tiny_skia::{Color, LineCap, Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform};
+mod component;
+mod components;
+mod config;
 mod openvr;
+mod prelude;
+mod sprite;
+mod types;
+mod utils;
+mod versioned;
+mod vulkan;
 
-mod vulkan {
-    use anyhow::Result;
-    use log::{debug, log_enabled, trace};
-    use std::{default::Default, mem::forget, sync::Arc};
-    use tiny_skia::Pixmap;
-    use vulkano::{
-        buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
-        command_buffer::{
-            allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-            CommandBufferUsage, CopyBufferToImageInfo, PrimaryCommandBufferAbstract,
-        },
-        device::{
-            physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
-            QueueCreateInfo, QueueFlags,
-        },
-        format::Format,
-        image::{Image, ImageCreateInfo, ImageType, ImageUsage},
-        instance::{
-            debug::{
-                DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
-                DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo,
-            },
-            Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions,
-        },
-        memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
-        DeviceSize, VulkanLibrary,
-    };
+use std::f64::consts::PI;
 
-    use crate::openvr::{CompositorInterface, Handle};
-
-    pub struct ImageUploader {
-        upload_buffer: Subbuffer<[u8]>,
-        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
-        queue: Arc<Queue>,
-        image: Arc<Image>,
-        pixmap: *const Pixmap,
-    }
-
-    impl ImageUploader {
-        pub fn new(
-            pixmap: &Pixmap,
-            compositor_interface: Handle<CompositorInterface>,
-        ) -> Result<Self> {
-            let width = pixmap.width();
-            let height = pixmap.height();
-            let extent = [width, height, 1];
-
-            let library = VulkanLibrary::new().unwrap();
-
-            let instance_flags_request =
-                compositor_interface.get_vulkan_instance_extensions_required()?;
-            let mut instance_extensions = InstanceExtensions::from_iter(
-                instance_flags_request
-                    .iter()
-                    .map(std::string::String::as_str),
-            );
-
-            instance_extensions.ext_debug_utils = true;
-
-            let mut enabled_layers = Vec::new();
-
-            if log_enabled!(log::Level::Trace) {
-                debug!("List of Vulkan layers available to use:");
-                let layers = library.layer_properties().unwrap();
-                for l in layers {
-                    debug!("\t{}", l.name());
-                }
-
-                enabled_layers.push("VK_LAYER_KHRONOS_validation".to_owned());
-            }
-
-            let instance = Instance::new(
-                library,
-                InstanceCreateInfo {
-                    flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                    enabled_extensions: instance_extensions,
-                    enabled_layers,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-
-            if log_enabled!(log::Level::Trace) {
-                unsafe {
-                    forget(DebugUtilsMessenger::new(
-                        instance.clone(),
-                        DebugUtilsMessengerCreateInfo {
-                            message_severity: DebugUtilsMessageSeverity::ERROR
-                                | DebugUtilsMessageSeverity::WARNING
-                                | DebugUtilsMessageSeverity::INFO
-                                | DebugUtilsMessageSeverity::VERBOSE,
-                            message_type: DebugUtilsMessageType::GENERAL
-                                | DebugUtilsMessageType::VALIDATION
-                                | DebugUtilsMessageType::PERFORMANCE,
-                            ..DebugUtilsMessengerCreateInfo::user_callback(
-                                DebugUtilsMessengerCallback::new(
-                                    |message_severity, message_type, callback_data| {
-                                        let severity = if message_severity
-                                            .intersects(DebugUtilsMessageSeverity::ERROR)
-                                        {
-                                            "error"
-                                        } else if message_severity
-                                            .intersects(DebugUtilsMessageSeverity::WARNING)
-                                        {
-                                            "warning"
-                                        } else if message_severity
-                                            .intersects(DebugUtilsMessageSeverity::INFO)
-                                        {
-                                            "information"
-                                        } else if message_severity
-                                            .intersects(DebugUtilsMessageSeverity::VERBOSE)
-                                        {
-                                            "verbose"
-                                        } else {
-                                            panic!("no-impl");
-                                        };
-
-                                        let ty = if message_type
-                                            .intersects(DebugUtilsMessageType::GENERAL)
-                                        {
-                                            "general"
-                                        } else if message_type
-                                            .intersects(DebugUtilsMessageType::VALIDATION)
-                                        {
-                                            "validation"
-                                        } else if message_type
-                                            .intersects(DebugUtilsMessageType::PERFORMANCE)
-                                        {
-                                            "performance"
-                                        } else {
-                                            panic!("no-impl");
-                                        };
-
-                                        trace!(
-                                            "{} {} {}: {}",
-                                            callback_data.message_id_name.unwrap_or("unknown"),
-                                            ty,
-                                            severity,
-                                            callback_data.message
-                                        );
-                                    },
-                                ),
-                            )
-                        },
-                    ));
-                };
-            }
-
-            let (physical_device, queue_family_index) = instance
-                .enumerate_physical_devices()
-                .unwrap()
-                // No need for swapchain extension support.
-                .filter_map(|p| {
-                    p.queue_family_properties()
-                        .iter()
-                        .position(|q| q.queue_flags.intersects(QueueFlags::GRAPHICS))
-                        .map(|i| (p, i as u32))
-                })
-                .min_by_key(|(p, _)| match p.properties().device_type {
-                    PhysicalDeviceType::DiscreteGpu => 0,
-                    PhysicalDeviceType::IntegratedGpu => 1,
-                    PhysicalDeviceType::VirtualGpu => 2,
-                    PhysicalDeviceType::Cpu => 3,
-                    PhysicalDeviceType::Other => 4,
-                    _ => 5,
-                })
-                .expect("no suitable physical device found");
-
-            debug!(
-                "Using device: {} (type: {:?})",
-                physical_device.properties().device_name,
-                physical_device.properties().device_type,
-            );
-
-            let device_extensions_request =
-                compositor_interface.get_vulkan_device_extensions_required(&physical_device)?;
-
-            let device_extensions = DeviceExtensions::from_iter(
-                device_extensions_request
-                    .iter()
-                    .map(|s: &String| s.as_str()),
-            );
-
-            debug!("Vulkan device extensions: {device_extensions:?}");
-
-            let (device, mut queues) = Device::new(
-                physical_device.clone(),
-                DeviceCreateInfo {
-                    queue_create_infos: vec![QueueCreateInfo {
-                        queue_family_index,
-                        ..Default::default()
-                    }],
-                    enabled_extensions: device_extensions,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-
-            let queue = queues.next().unwrap();
-
-            let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-
-            let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-                device.clone(),
-                Default::default(),
-            ));
-
-            let upload_buffer: vulkano::buffer::Subbuffer<[u8]> = Buffer::new_slice(
-                memory_allocator.clone(),
-                BufferCreateInfo {
-                    usage: BufferUsage::TRANSFER_SRC,
-                    ..Default::default()
-                },
-                AllocationCreateInfo {
-                    memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                },
-                DeviceSize::from(width * height * 4),
-            )
-            .unwrap();
-
-            let image = Image::new(
-                memory_allocator,
-                ImageCreateInfo {
-                    image_type: ImageType::Dim2d,
-                    format: Format::R8G8B8A8_SRGB,
-                    extent,
-                    usage: ImageUsage::TRANSFER_SRC
-                        | ImageUsage::TRANSFER_DST
-                        | ImageUsage::SAMPLED,
-                    ..Default::default()
-                },
-                AllocationCreateInfo::default(),
-            )
-            .unwrap();
-
-            Ok(ImageUploader {
-                queue,
-                command_buffer_allocator,
-                upload_buffer,
-                image,
-                pixmap: std::ptr::from_ref::<Pixmap>(pixmap),
-            })
-        }
-
-        pub fn upload(&mut self, pixmap: &Pixmap) -> Arc<Image> {
-            assert!(
-                std::ptr::from_ref::<Pixmap>(pixmap) == self.pixmap,
-                "pixmap mismatch"
-            );
-
-            let mut uploads = AutoCommandBufferBuilder::primary(
-                self.command_buffer_allocator.clone(),
-                self.queue.queue_family_index(),
-                CommandBufferUsage::OneTimeSubmit,
-            )
-            .unwrap();
-
-            {
-                let mut writer = self.upload_buffer.write().unwrap();
-
-                writer.copy_from_slice(pixmap.data());
-
-                uploads
-                    .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
-                        self.upload_buffer.clone(),
-                        self.image.clone(),
-                    ))
-                    .unwrap();
-            }
-
-            let _ = uploads
-                .build()
-                .unwrap()
-                .execute(self.queue.clone())
-                .unwrap();
-
-            self.image.clone()
-        }
-
-        pub fn queue(&self) -> &Queue {
-            self.queue.as_ref()
-        }
-    }
-}
-
-type Axis1D = f32;
-
-struct Axis2D {
-    x: f32,
-    y: f32,
-}
-
-struct InputState {
-    trigger: Axis1D,
-    stick: Axis2D,
-}
+use crate::prelude::*;
+use anyhow::Result;
+use components::pie_menu;
+use config::Config;
+use tiny_skia::Pixmap;
 
 trait App {
-    fn on_update(&mut self, input: &InputState) -> Result<()> {
+    fn on_update(&mut self) -> Result<()> {
         Ok(())
     }
-    fn on_render(&mut self, pixmap: &mut Pixmap) -> Result<()> {
+    fn on_render(&mut self, _: &mut Pixmap) -> Result<()> {
         Ok(())
     }
 }
 
 struct AppImpl {
-    
+    fps: Fps,
+    interval_timer_update: IntervalTimer,
+    interval_timer_render: IntervalTimer,
+    should_render: bool,
+    pie_menu: pie_menu::PieMenuComponent,
 }
 
 impl AppImpl {
-    fn new() -> Result<Self> {
-        Ok(AppImpl {})
+    fn new(configuration: Config) -> Result<Self> {
+        Ok(Self {
+            fps: Fps::new(60),
+            interval_timer_update: IntervalTimer::new(1000.0),
+            interval_timer_render: IntervalTimer::new(1000.0),
+            should_render: true,
+            pie_menu: Self::create_pie_menu(&configuration.root, &configuration),
+        })
+    }
+
+    fn create_pie_menu(
+        menu_id: &config::types::MenuId,
+        configuration: &Config,
+    ) -> pie_menu::PieMenuComponent {
+        let center_x = 256.0;
+        let center_y = 256.0;
+        let radius = 256.0;
+
+        let menu: Menu = configuration.menus.get(menu_id).unwrap().clone().into(); // OPTIMIZE: do not clone
+
+        pie_menu::PieMenuComponent::new(center_x, center_y, radius, menu)
     }
 }
 
 impl App for AppImpl {
-    fn on_update(&mut self, input: &InputState) -> Result<()> {
+    fn on_update(&mut self) -> Result<()> {
+        let timing_check = TimingCheck::new();
+        self.should_render = true;
+
+        let time_as_seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64();
+        let angle = ((time_as_seconds * PI * 2.0 * 0.1) % (PI * 2.0)) as f32;
+        let magnitude = f64::midpoint((time_as_seconds * PI * 2.0 * 1.0).cos(), 1.0) as f32;
+
+        self.pie_menu.update(&pie_menu::Props {
+            pie_menu_input: PieMenuInput {
+                angle,
+                magnitude,
+                click: 0.0,
+            },
+        });
+
+        self.fps.update();
+
+        let time_elapsed_ns = timing_check.get_time_ns();
+
+        if self.interval_timer_update.update() {
+            log::info!("update: {time_elapsed_ns}ns");
+            log::info!("fps: {}", self.fps.get_fps());
+        }
+
         Ok(())
     }
 
     fn on_render(&mut self, pixmap: &mut Pixmap) -> Result<()> {
-        // TODO: Skip rendering if no input changes
+        let timing_check = TimingCheck::new();
 
-        // Rendering
-        pixmap.fill(Color::from_rgba8(0, 0, 0, 255));
+        pixmap.fill(tiny_skia::Color::from_rgba(0.0, 0.0, 0.0, 0.0).unwrap());
+        if self.should_render {
+            self.should_render = false;
+        } else {
+            return Ok(());
+        }
 
-        let mut paint = Paint::default();
-        paint.anti_alias = true;
-        paint.set_color_rgba8(0, 127, 0, 200);
+        self.pie_menu.render(pixmap);
 
-        let path = {
-            let mut pb = PathBuilder::new();
-            const RADIUS: f32 = 250.0;
-            const CENTER: f32 = 250.0;
-            pb.move_to(CENTER + RADIUS, CENTER);
-            for i in 1..8 {
-                let offset = 0;
-                let a = 2.692_793_7 * i as f32 + offset as f32;
-                pb.line_to(CENTER + RADIUS * a.cos(), CENTER + RADIUS * a.sin());
-            }
-            pb.finish().unwrap()
-        };
-
-        let mut stroke = Stroke::default();
-        stroke.line_cap = LineCap::Round;
-        stroke.dash = StrokeDash::new(vec![20.0, 40.0], 0.0);
-
-        pixmap
-            .stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+        if self.interval_timer_render.update() {
+            log::info!("render: {}ns", timing_check.get_time_ns());
+        }
 
         Ok(())
     }
 }
 
 fn app() -> Result<()> {
-    let mut app = AppImpl::new()?;
+    let config = config::load("config.json")?;
+    let mut app = AppImpl::new(config)?;
 
-    let openvr = Handle::<openvr::OpenVr>::new(openvr::EVRApplicationType::Overlay)?;
+    let openvr = openvr::Handle::<openvr::OpenVr>::new(openvr::EVRApplicationType::Overlay)?;
     let overlay_interface = openvr.overlay()?;
     let compositor = openvr.compositor()?;
     let overlay = overlay_interface.create("oscpie_overlay", "OSCpie Overlay")?;
-    let mut pixmap = Pixmap::new(800, 600).unwrap();
+    let mut pixmap = Pixmap::new(512, 512).unwrap();
     let mut uploader = vulkan::ImageUploader::new(&pixmap, compositor.clone())?;
 
+    let mut interval_timer = IntervalTimer::new(1000.0);
+
     loop {
+        let timing = TimingCheck::new();
+        app.on_update()?;
         app.on_render(&mut pixmap)?;
 
         let image = uploader.upload(&pixmap);
@@ -385,6 +140,11 @@ fn app() -> Result<()> {
         };
 
         overlay.set_overlay_texture(&mut texture)?;
+
+        let time_elapsed_ns = timing.get_time_ns();
+        if interval_timer.update() {
+            log::info!("whole process: {time_elapsed_ns}ns");
+        }
 
         overlay.wait_frame_sync(100)?;
     }

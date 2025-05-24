@@ -79,13 +79,13 @@ struct CastRc<T>
 where
     T: 'static,
 {
-    rc: Rc<OpenVr>,
+    _rc: Rc<OpenVr>,
     value: &'static T,
 }
 
 impl<T> CastRc<T> {
-    unsafe fn new(rc: Rc<OpenVr>, value: &'static T) -> Self {
-        CastRc { rc, value }
+    unsafe fn new(_rc: Rc<OpenVr>, value: &'static T) -> Self {
+        CastRc { _rc, value }
     }
 
     fn get(&self) -> &T {
@@ -164,7 +164,11 @@ impl Handle<CompositorInterface> {
         let mut extensions: [u8; 4096] = [0; 4096];
 
         unsafe {
-            self.0.sys.get().GetVulkanInstanceExtensionsRequired.unwrap()(
+            self.0
+                .sys
+                .get()
+                .GetVulkanInstanceExtensionsRequired
+                .unwrap()(
                 extensions.as_mut_ptr().cast::<i8>(),
                 4096,
                 /*extensions.len() as u32*/
@@ -288,7 +292,11 @@ impl Overlay {
 
         trace!(
             "SetOverlayRaw: {}, {} {} {} {}",
-            self.overlay_handle, width, height, bytes_per_pixel, error
+            self.overlay_handle,
+            width,
+            height,
+            bytes_per_pixel,
+            error
         );
 
         if error != sys::EVROverlayError_VROverlayError_None {
