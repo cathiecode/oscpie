@@ -21,8 +21,14 @@ use resource::SPRITE_SHEET;
 use sprite::SpriteSheet;
 use tiny_skia::Pixmap;
 
+struct AppInput {
+    angle: f32,
+    magnitude: f32,
+    click: f32,
+}
+
 trait App {
-    fn on_update(&mut self) -> Result<()> {
+    fn on_update(&mut self, input: AppInput) -> Result<()> {
         Ok(())
     }
     fn on_render(&mut self, _: &mut Pixmap) -> Result<()> {
@@ -64,22 +70,21 @@ impl AppImpl {
 }
 
 impl App for AppImpl {
-    fn on_update(&mut self) -> Result<()> {
+    fn on_update(&mut self, input: AppInput) -> Result<()> {
         let timing_check = TimingCheck::new();
         self.should_render = true;
 
-        let time_as_seconds = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs_f64();
-        let angle = ((time_as_seconds * PI * 2.0 * 0.1) % (PI * 2.0)) as f32;
-        let magnitude = f64::midpoint((time_as_seconds * PI * 2.0 * 1.0).cos(), 1.0) as f32;
+        let AppInput {
+            angle,
+            magnitude,
+            click,
+        } = input;
 
         self.pie_menu.update(&pie_menu::Props {
             pie_menu_input: PieMenuInput {
                 angle,
                 magnitude,
-                click: 0.0,
+                click,
             },
         });
 
@@ -133,9 +138,30 @@ fn app() -> Result<()> {
 
     let mut interval_timer = IntervalTimer::new(1000.0);
 
+    let demo = true;
+
     loop {
         let timing = TimingCheck::new();
-        app.on_update()?;
+
+        let input = if demo {
+            let time_as_seconds = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f64();
+
+            let angle = ((time_as_seconds * PI * 2.0 * 0.1) % (PI * 2.0)) as f32;
+            let magnitude = f64::midpoint((time_as_seconds * PI * 2.0 * 1.0).cos(), 1.0) as f32;
+
+            AppInput {
+                angle: angle,
+                magnitude: magnitude,
+                click: 0.0,
+            }
+        } else {
+            todo!()
+        };
+
+        app.on_update(input)?;
         app.on_render(&mut pixmap)?;
 
         let image = uploader.upload(&pixmap);
