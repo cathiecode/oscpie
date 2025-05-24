@@ -11,6 +11,7 @@ impl MenuId {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MenuItemAction {
+    Noop,
     SubMenu { to: MenuId },
 }
 
