@@ -234,6 +234,7 @@ mod tests {
     }
 }
 
+#[cfg(test)]
 mod stories {
     // NOTE: Allow unused_imports to import Component trait
     #![allow(unused_imports)]
