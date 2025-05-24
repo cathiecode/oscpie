@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use tiny_skia::Paint;
 
 pub fn lerp<T>(start: T, end: T, t: f32) -> T
@@ -96,4 +98,14 @@ impl IntervalTimer {
 
 pub fn default_paint<'a>() -> Paint<'a> {
     Paint::default()
+}
+
+pub fn resolve_path(base: &str, target: &str) -> PathBuf {
+    let mut path = PathBuf::from(base);
+
+    if path.is_file() {
+        path = path.parent().unwrap().to_path_buf();
+    }
+
+    path.join(PathBuf::from(target))
 }

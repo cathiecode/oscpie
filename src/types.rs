@@ -17,6 +17,7 @@ pub enum MenuItemAction {
 
 pub struct MenuItem {
     pub action: MenuItemAction,
+    pub icon: Option<String>,
 }
 
 pub struct Menu {

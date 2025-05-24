@@ -3,12 +3,13 @@ mod components;
 mod config;
 mod openvr;
 mod prelude;
+mod resource;
 mod sprite;
+mod story;
 mod types;
 mod utils;
 mod versioned;
 mod vulkan;
-mod story;
 
 use std::f64::consts::PI;
 
@@ -16,6 +17,8 @@ use crate::prelude::*;
 use anyhow::Result;
 use components::pie_menu;
 use config::Config;
+use resource::SPRITE_SHEET;
+use sprite::SpriteSheet;
 use tiny_skia::Pixmap;
 
 trait App {
@@ -114,6 +117,11 @@ impl App for AppImpl {
 
 fn app() -> Result<()> {
     let config = config::load("config/config.json")?;
+
+    SPRITE_SHEET
+        .set(SpriteSheet::load(resolve_path("config/config.json", &config.sprite_sheet)).unwrap())
+        .unwrap();
+
     let mut app = AppImpl::new(config)?;
 
     let openvr = openvr::Handle::<openvr::OpenVr>::new(openvr::EVRApplicationType::Overlay)?;

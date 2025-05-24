@@ -25,8 +25,9 @@ pub struct SpriteSheet {
 }
 
 impl SpriteSheet {
-    pub fn load(path: &str) -> Result<Self, String> {
-        let sheet_path = PathBuf::from(path);
+    pub fn load(sheet_path: PathBuf) -> Result<Self, String> {
+        log::info!("Loading sprite sheet: {}", sheet_path.display());
+
         let file = std::fs::File::open(&sheet_path).map_err(|e| e.to_string())?;
         let sprite_sheet_meta: SpriteSheetMeta =
             serde_json::from_reader(file).map_err(|e| e.to_string())?;
@@ -36,7 +37,7 @@ impl SpriteSheet {
             .unwrap()
             .join(sprite_sheet_meta.image.clone());
 
-        log::info!("Loading sprite sheet: {}", image_path.display());
+        log::info!("Image path: {}", sheet_path.display());
 
         let pixmap = Pixmap::load_png(image_path.clone())
             .map_err(|e| format!("{}: {}", e, image_path.display()))?;
@@ -67,12 +68,12 @@ mod tests {
     use super::*;
 
     fn load_test_sprite_sheet() -> SpriteSheet {
-        SpriteSheet::load("test_files/sprites/sprites.json").unwrap()
+        SpriteSheet::load(PathBuf::from("test_files/sprites/sprites.json")).unwrap()
     }
 
     #[test]
     fn test_load_sprite_sheet() {
-        SpriteSheet::load("test_files/sprites/sprites.json").unwrap();
+        load_test_sprite_sheet();
     }
 
     #[test]

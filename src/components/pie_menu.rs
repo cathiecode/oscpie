@@ -1,6 +1,6 @@
 use tiny_skia::{Pixmap, Rect, Transform};
 
-use crate::{component::Component, prelude::*};
+use crate::{component::Component, prelude::*, resource::get_sprite_sheet};
 
 use super::pie_menu_item;
 
@@ -46,6 +46,9 @@ impl PieMenuComponent {
                         // Handle the action here
                         println!("Action triggered: {action:?}");
                     }),
+                    item.icon
+                        .as_ref()
+                        .map(|icon_sprite_id| get_sprite_sheet().cutout(icon_sprite_id).unwrap()), // FIXME: Not testable
                 )
             })
             .collect();
@@ -143,19 +146,26 @@ mod stories {
         let center_y = 256.0;
         let radius = 256.0 * 0.9;
 
+        let mut icon = Pixmap::new(128, 128).unwrap();
+        icon.fill(tiny_skia::Color::from_rgba8(255, 0, 0, 255));
+
         let menu = Menu {
             items: vec![
                 MenuItem {
                     action: MenuItemAction::Noop,
+                    icon: None,
                 },
                 MenuItem {
                     action: MenuItemAction::Noop,
+                    icon: None,
                 },
                 MenuItem {
                     action: MenuItemAction::Noop,
+                    icon: None,
                 },
                 MenuItem {
                     action: MenuItemAction::Noop,
+                    icon: None,
                 },
             ],
         };

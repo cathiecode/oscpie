@@ -1,0 +1,40 @@
+{
+    "image": "spritesheet_image.png",
+    "sprites": {
+        "1": {
+            "name": "1",
+            "width": 64,
+            "height": 64,
+            "x_start": 0,
+            "y_start": 0
+        },
+        "2": {
+            "name": "2",
+            "width": 64,
+            "height": 64,
+            "x_start": 64,
+            "y_start": 0
+        },
+        "3": {
+            "name": "3",
+            "width": 64,
+            "height": 64,
+            "x_start": 128,
+            "y_start": 0
+        },
+        "4": {
+            "name": "4",
+            "width": 64,
+            "height": 64,
+            "x_start": 192,
+            "y_start": 0
+        },
+        "5": {
+            "name": "5",
+            "width": 64,
+            "height": 64,
+            "x_start": 256,
+            "y_start": 0
+        }
+    }
+}

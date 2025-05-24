@@ -2,6 +2,8 @@ use crate::component::Component;
 use crate::prelude::*;
 use tiny_skia::{FillRule, Pixmap, Transform};
 
+use super::sprite::{self, SpriteComponent};
+
 pub struct Props<'a> {
     pub pie_menu_input: &'a PieMenuInput,
 }
@@ -34,6 +36,7 @@ pub struct PieMenuItemComponent {
     callback: Box<dyn Fn(CallbackProps)>,
     click_started: bool,
     highlight: Highlight,
+    icon_component: Option<SpriteComponent>,
 }
 
 impl PieMenuItemComponent {
@@ -45,6 +48,7 @@ impl PieMenuItemComponent {
         end_angle: f32,
         action: MenuItemAction,
         callback: Box<dyn Fn(CallbackProps)>,
+        icon: Option<Pixmap>,
     ) -> Self {
         Self {
             center_x,
@@ -56,6 +60,7 @@ impl PieMenuItemComponent {
             callback,
             click_started: false,
             highlight: Highlight::None,
+            icon_component: icon.map(SpriteComponent::new),
         }
     }
 }
@@ -88,6 +93,17 @@ impl Component for PieMenuItemComponent {
             self.highlight = Highlight::Soft;
         } else {
             self.highlight = Highlight::None;
+        }
+
+        if let Some(icon_component) = &mut self.icon_component {
+            let middle_angle = f32::midpoint(self.start_angle, self.end_angle);
+            icon_component.update(&sprite::Props {
+                x: self.center_x + self.radius * 0.7 * middle_angle.cos(),
+                y: self.center_y + self.radius * 0.7 * middle_angle.sin(),
+                width: self.radius * 0.25,
+                height: self.radius * 0.25,
+                layout_mode: sprite::LayoutMode::Center,
+            });
         }
     }
     fn render(&self, pixmap: &mut Pixmap) {
@@ -165,6 +181,13 @@ impl Component for PieMenuItemComponent {
             paint.set_color_rgba8(255, 255, 255, 255);
             pixmap.stroke_path(&path, &paint, &stroke, transform, None);
         }
+
+        // Icon
+        {
+            if let Some(icon_component) = &self.icon_component {
+                icon_component.render(pixmap);
+            }
+        }
     }
 }
 
@@ -187,7 +210,16 @@ mod tests {
             }
         });
 
-        PieMenuItemComponent::new(0.0, 0.0, 0.0, start_angle, end_angle, action, callback)
+        PieMenuItemComponent::new(
+            0.0,
+            0.0,
+            0.0,
+            start_angle,
+            end_angle,
+            action,
+            callback,
+            None,
+        )
     }
 
     #[test]
@@ -285,6 +317,9 @@ mod stories {
             }
         });
 
+        let mut icon = Pixmap::new(128, 128).unwrap();
+        icon.fill(tiny_skia::Color::from_rgba8(255, 0, 0, 255));
+
         PieMenuItemComponent::new(
             256.0,
             256.0,
@@ -293,6 +328,7 @@ mod stories {
             END_ANGLE,
             action,
             callback,
+            Some(icon),
         )
     }
 

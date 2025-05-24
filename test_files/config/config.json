@@ -1,6 +1,7 @@
 {
     "config_version": "V1",
     "config": {
+        "sprite_sheet": "",
         "root": "root",
         "menus": {
             "root": {

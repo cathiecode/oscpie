@@ -9,34 +9,40 @@
                         "action": {
                             "type": "SubMenu",
                             "to": "root"
-                        }
+                        },
+                        "icon": "1"
                     },
                     {
                         "action": {
                             "type": "SubMenu",
                             "to": "root"
-                        }
+                        },
+                        "icon": "2"
                     },
                     {
                         "action": {
                             "type": "SubMenu",
                             "to": "root"
-                        }
+                        },
+                        "icon": "3"
                     },
                     {
                         "action": {
                             "type": "SubMenu",
                             "to": "root"
-                        }
+                        },
+                        "icon": "4"
                     },
                     {
                         "action": {
                             "type": "SubMenu",
                             "to": "root"
-                        }
+                        },
+                        "icon": "5"
                     }
                 ]
             }
-        }
+        },
+        "sprite_sheet": "spritesheet.json"
     }
 }

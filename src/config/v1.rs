@@ -31,12 +31,14 @@ impl From<MenuItemAction> for crate::types::MenuItemAction {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MenuItem {
     pub action: MenuItemAction,
+    pub icon: Option<String>,
 }
 
 impl From<MenuItem> for crate::types::MenuItem {
     fn from(val: MenuItem) -> Self {
         crate::types::MenuItem {
             action: val.action.into(),
+            icon: val.icon,
         }
     }
 }
@@ -62,4 +64,5 @@ impl From<Menu> for crate::types::Menu {
 pub struct Config {
     pub menus: HashMap<MenuId, Menu>,
     pub root: MenuId,
+    pub sprite_sheet: String,
 }

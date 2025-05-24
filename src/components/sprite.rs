@@ -1,14 +1,14 @@
 use tiny_skia::{FilterQuality, Pixmap, PixmapPaint};
 
-enum LayoutMode {
+pub enum LayoutMode {
     Center,
 }
 
 pub struct Props {
     pub x: f32,
     pub y: f32,
-    pub width: u32,
-    pub height: u32,
+    pub width: f32,
+    pub height: f32,
     pub layout_mode: LayoutMode,
 }
 
@@ -41,14 +41,14 @@ impl SpriteComponent {
     pub fn update(&mut self, props: &Props) {
         (self.x, self.y) = match props.layout_mode {
             LayoutMode::Center => (
-                props.x - (props.width as f32 / 2.0),
-                props.y - (props.height as f32 / 2.0),
+                props.x - (props.width / 2.0),
+                props.y - (props.height / 2.0),
             ),
         };
 
         (self.scale_x, self.scale_y) = (
-            props.width as f32 / self.image_width as f32,
-            props.height as f32 / self.image_height as f32,
+            props.width / self.image_width as f32,
+            props.height / self.image_height as f32,
         );
     }
 
@@ -95,8 +95,8 @@ mod stories {
             let props = Props {
                 x: pixmap.width() as f32 / 2.0,
                 y: pixmap.height() as f32 / 2.0,
-                width: pixmap.width() / 2,
-                height: pixmap.height() / 2,
+                width: pixmap.width() as f32 / 2.0,
+                height: pixmap.height() as f32 / 2.0,
                 layout_mode: LayoutMode::Center,
             };
 
