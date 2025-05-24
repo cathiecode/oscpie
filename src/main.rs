@@ -112,7 +112,7 @@ impl App for AppImpl {
 }
 
 fn app() -> Result<()> {
-    let config = config::load("config.json")?;
+    let config = config::load("config/config.json")?;
     let mut app = AppImpl::new(config)?;
 
     let openvr = openvr::Handle::<openvr::OpenVr>::new(openvr::EVRApplicationType::Overlay)?;

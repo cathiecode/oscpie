@@ -1,0 +1,42 @@
+{
+    "config_version": "V1",
+    "config": {
+        "root": "root",
+        "menus": {
+            "root": {
+                "items": [
+                    {
+                        "action": {
+                            "type": "SubMenu",
+                            "to": "root"
+                        }
+                    },
+                    {
+                        "action": {
+                            "type": "SubMenu",
+                            "to": "root"
+                        }
+                    },
+                    {
+                        "action": {
+                            "type": "SubMenu",
+                            "to": "root"
+                        }
+                    },
+                    {
+                        "action": {
+                            "type": "SubMenu",
+                            "to": "root"
+                        }
+                    },
+                    {
+                        "action": {
+                            "type": "SubMenu",
+                            "to": "root"
+                        }
+                    }
+                ]
+            }
+        }
+    }
+}

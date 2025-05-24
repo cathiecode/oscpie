@@ -45,7 +45,7 @@ pub fn read(config_file: ConfigFile) -> Result<Config> {
 pub fn load(path: &str) -> Result<Config> {
     let file = std::fs::File::open(path).map_err(|e| anyhow!(e.to_string()))?;
     let config_file: ConfigFile =
-        serde_json5::from_reader(file).map_err(|e| anyhow!(e.to_string()))?;
+        serde_json::from_reader(file).map_err(|e| anyhow!(e.to_string()))?;
 
     let config = read(config_file)?;
 
@@ -60,7 +60,7 @@ mod test {
 
     #[test]
     fn test_load_config() {
-        let config = load("config.json");
+        let config = load("test_files/config/config.json");
         assert!(config.is_ok());
     }
 }
