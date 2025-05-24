@@ -30,12 +30,16 @@ impl SpriteSheet {
         let file = std::fs::File::open(&sheet_path).map_err(|e| e.to_string())?;
         let sprite_sheet_meta: SpriteSheetMeta =
             serde_json::from_reader(file).map_err(|e| e.to_string())?;
-        
-        let image_path: PathBuf = sheet_path.parent().unwrap().join(sprite_sheet_meta.image.clone());
+
+        let image_path: PathBuf = sheet_path
+            .parent()
+            .unwrap()
+            .join(sprite_sheet_meta.image.clone());
 
         log::info!("Loading sprite sheet: {}", image_path.display());
 
-        let pixmap = Pixmap::load_png(image_path.clone()).map_err(|e| format!("{}: {}", e.to_string(), image_path.display()))?;
+        let pixmap = Pixmap::load_png(image_path.clone())
+            .map_err(|e| format!("{}: {}", e, image_path.display()))?;
 
         Ok(Self {
             meta: sprite_sheet_meta,
@@ -78,11 +82,17 @@ mod tests {
         let sprite_s = sprite_sheet.cutout("s");
         assert!(sprite_s.is_some());
 
-        assert_eq!(Pixmap::load_png("test_files/sprites/s.png").unwrap(), sprite_s.unwrap());
+        assert_eq!(
+            Pixmap::load_png("test_files/sprites/s.png").unwrap(),
+            sprite_s.unwrap()
+        );
 
         let sprite_p = sprite_sheet.cutout("p");
         assert!(sprite_p.is_some());
 
-        assert_ne!(Pixmap::load_png("test_files/sprites/s.png").unwrap(), sprite_p.unwrap());
+        assert_ne!(
+            Pixmap::load_png("test_files/sprites/s.png").unwrap(),
+            sprite_p.unwrap()
+        );
     }
 }
