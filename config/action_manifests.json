@@ -1,0 +1,69 @@
+{
+    "default_bindings": [
+        {
+            "controller_type": "knuckles",
+            "binding_url": "binding_knuckles.json"
+        }
+    ],
+    "actions": [
+        {
+            "name": "/actions/main/in/OpenLeft",
+            "requirement": "mandatory",
+            "type": "boolean"
+        },
+        {
+            "name": "/actions/main/in/ClickLeft",
+            "requirement": "mandatory",
+            "type": "boolean"
+        },
+        {
+            "name": "/actions/main/in/SelectLeft",
+            "requirement": "mandatory",
+            "type": "vector2"
+        },
+        {
+            "name": "/actions/main/in/PoseLeft",
+            "requirement": "mandatory",
+            "type": "pose"
+        },
+        {
+            "name": "/actions/main/in/OpenRight",
+            "requirement": "mandatory",
+            "type": "boolean"
+        },
+        {
+            "name": "/actions/main/in/ClickRight",
+            "requirement": "mandatory",
+            "type": "boolean"
+        },
+        {
+            "name": "/actions/main/in/SelectRight",
+            "requirement": "mandatory",
+            "type": "vector2"
+        },
+        {
+            "name": "/actions/main/in/PoseRight",
+            "requirement": "mandatory",
+            "type": "pose"
+        }
+    ],
+    "action_sets": [
+        {
+            "name": "/actions/main",
+            "usage": "leftright"
+        }
+    ],
+    "localization": [
+        {
+            "language_tag": "en_us",
+            "/actions/main/in/OpenLeft": "Open Menu by Left Hand",
+            "/actions/main/in/ClickLeft": "Click Menu Item by Left Hand",
+            "/actions/main/in/SelectLeft": "Select Menu Item by Left Hand",
+            "/actions/main/in/PoseLeft": "Menu Position in Left Hand",
+            "/actions/main/in/OpenRight": "Open Menu by Left Hand",
+            "/actions/main/in/ClickRight": "Click Menu Item by Right Hand",
+            "/actions/main/in/SelectRight": "Select Menu Item by Right Hand",
+            "/actions/main/in/PoseRight": "Menu Position in Right Hand"
+        }
+    ]
+}

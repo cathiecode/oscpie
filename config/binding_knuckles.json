@@ -1,0 +1,75 @@
+{
+    "bindings": {
+        "/actions/main": {
+            "sources": [
+                {
+                    "inputs": {
+                        "position": {
+                            "output": "/actions/main/in/SelectLeft"
+                        }
+                    },
+                    "mode": "joystick",
+                    "path": "/user/hand/left/input/thumbstick"
+                },
+                {
+                    "inputs": {
+                        "position": {
+                            "output": "/actions/main/in/SelectRight"
+                        }
+                    },
+                    "mode": "joystick",
+                    "path": "/user/hand/right/input/thumbstick"
+                },
+                {
+                    "inputs": {
+                        "pull": {
+                            "output": "/actions/main/in/OpenLeft"
+                        }
+                    },
+                    "mode": "trigger",
+                    "path": "/user/hand/left/input/trigger"
+                },
+                {
+                    "inputs": {
+                        "pull": {
+                            "output": "/actions/main/in/OpenRight"
+                        }
+                    },
+                    "mode": "trigger",
+                    "path": "/user/hand/right/input/trigger"
+                },
+                {
+                    "inputs": {
+                        "click": {
+                            "output": "/actions/main/in/ClickLeft"
+                        }
+                    },
+                    "mode": "button",
+                    "path": "/user/hand/left/input/a"
+                },
+                {
+                    "inputs": {
+                        "click": {
+                            "output": "/actions/main/in/ClickRight"
+                        }
+                    },
+                    "mode": "button",
+                    "path": "/user/hand/right/input/a"
+                }
+            ],
+            "poses": [
+                {
+                    "output": "/actions/main/in/PoseLeft",
+                    "path": "/user/hand/left/input/pose"
+                },
+                {
+                    "output": "/actions/main/in/PoseRight",
+                    "path": "/user/hand/right/input/pose"
+                }
+            ]
+        }
+    },
+    "controller_type": "knuckles",
+    "description": "",
+    "name": "binding_knuckles_default"
+}

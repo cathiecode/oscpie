@@ -1,9 +1,13 @@
+mod input;
+
+use crate::prelude::*;
 use anyhow::{anyhow, Result};
 use log::{debug, trace};
 
 use openvr_sys::{self as sys, VkDevice_T, VkInstance_T, VkPhysicalDevice_T, VkQueue_T};
 use std::{
     ffi::{c_void, CStr},
+    path::PathBuf,
     rc::Rc,
 };
 use vulkano::{
@@ -136,6 +140,36 @@ impl Handle<OpenVr> {
         Ok(Handle(Rc::new(CompositorInterface {
             sys: unsafe { CastRc::new(self.0.clone(), sys) },
         })))
+    }
+
+    pub fn input(&self, action_manifest_path: Option<PathBuf>) -> Result<input::generated::Input> {
+        let sys = get_interface::<sys::VR_IVRInput_FnTable>(sys::IVRInput_Version)?;
+
+        if let Some(path) = &action_manifest_path {
+            log::info!("Setting action manifest path: {}", path.display());
+
+            let path = path.canonicalize().unwrap();
+
+            // TODO: Multibyte string conversion?
+            let error = unsafe {
+                sys.SetActionManifestPath.unwrap()(
+                    std::ffi::CString::new(path.to_string_lossy().as_bytes())?
+                        .as_ptr()
+                        .cast_mut(),
+                )
+            };
+
+            if error != sys::EVRInputError_VRInputError_None {
+                return Err(anyhow::anyhow!(
+                    "Failed to set action manifest path: {}",
+                    error
+                ));
+            }
+        }
+
+        let input = input::generated::Input::new(unsafe { CastRc::new(self.0.clone(), sys) })?;
+
+        Ok(input)
     }
 }
 
@@ -367,5 +401,69 @@ impl Drop for Overlay {
         unsafe {
             self.interface.0.sys.get().DestroyOverlay.unwrap()(self.overlay_handle);
         }
+    }
+}
+
+pub fn from_hmd_matrix34_t(matrix: sys::HmdMatrix34_t) -> Affine3A {
+    Affine3A::from_cols_array(&[
+        matrix.m[0][0],
+        matrix.m[1][0],
+        matrix.m[2][0],
+        matrix.m[0][1],
+        matrix.m[1][1],
+        matrix.m[2][1],
+        matrix.m[0][2],
+        matrix.m[1][2],
+        matrix.m[2][2],
+        matrix.m[0][3],
+        matrix.m[1][3],
+        matrix.m[2][3],
+    ])
+}
+
+pub fn to_hmd_matrix34_t(matrix: Affine3A) -> sys::HmdMatrix34_t {
+    sys::HmdMatrix34_t {
+        m: [
+            [
+                matrix.x_axis.x,
+                matrix.y_axis.x,
+                matrix.z_axis.x,
+                matrix.translation.x,
+            ],
+            [
+                matrix.x_axis.y,
+                matrix.y_axis.y,
+                matrix.z_axis.y,
+                matrix.translation.y,
+            ],
+            [
+                matrix.x_axis.z,
+                matrix.y_axis.z,
+                matrix.z_axis.z,
+                matrix.translation.z,
+            ],
+        ],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use glam::Affine3A;
+
+    #[test]
+    fn test_hmdmatrix_conversions() {
+        let a = Affine3A::from_cols_array(&[
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ]);
+
+        let b = to_hmd_matrix34_t(a);
+
+        let c = from_hmd_matrix34_t(b);
+
+        assert!((a.translation - c.translation).length() < 1e-6);
+        assert!((a.x_axis - c.x_axis).length() < 1e-6);
+        assert!((a.y_axis - c.y_axis).length() < 1e-6);
+        assert!((a.z_axis - c.z_axis).length() < 1e-6);
     }
 }

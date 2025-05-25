@@ -132,13 +132,19 @@ fn app() -> Result<()> {
     let openvr = openvr::Handle::<openvr::OpenVr>::new(openvr::EVRApplicationType::Overlay)?;
     let overlay_interface = openvr.overlay()?;
     let compositor = openvr.compositor()?;
+
+    let action_manifest_path = resolve_path("config", "action_manifests.json");
+
+    let mut input = openvr.input(Some(action_manifest_path))?;
+
+    input.activate_actions_main();
     let overlay = overlay_interface.create("oscpie_overlay", "OSCPie Overlay")?;
     let mut pixmap = Pixmap::new(512, 512).unwrap();
     let mut uploader = vulkan::ImageUploader::new(&pixmap, compositor.clone())?;
 
     let mut interval_timer = IntervalTimer::new(1000.0);
 
-    let demo = true;
+    let demo = false;
 
     loop {
         let timing = TimingCheck::new();
@@ -153,12 +159,22 @@ fn app() -> Result<()> {
             let magnitude = f64::midpoint((time_as_seconds * PI * 2.0 * 1.0).cos(), 1.0) as f32;
 
             AppInput {
-                angle: angle,
-                magnitude: magnitude,
+                angle,
+                magnitude,
                 click: 0.0,
             }
         } else {
-            todo!()
+            input.update()?;
+            let click_input = input.get_actions_main_in_ClickLeft()?;
+            let select_input = input.get_actions_main_in_SelectLeft()?;
+
+            log::trace!("ClickLeft: {click_input:?}, SelectLeft: {select_input:?}");
+
+            AppInput {
+                angle: select_input.value.y.atan2(select_input.value.x),
+                magnitude: select_input.value.length(),
+                click: if click_input.state { 1.0 } else { 0.0 },
+            }
         };
 
         app.on_update(input)?;
