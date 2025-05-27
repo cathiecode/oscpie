@@ -329,11 +329,11 @@ pub fn get_actions_main_in_PoseRight(
 todo!();
 }
 pub fn activate_actions_main(&mut self) {
-self.activate_action_set(self.generated_fields.action_set_handle_actions_main);
+self.activate_action_set(self.generated_fields.action_set_handle_actions_main)
 }
 pub fn deactivate_actions_main(&mut self) {
 // Deactivation logic for /actions/main
-self.deactivate_action_set(self.generated_fields.action_set_handle_actions_main);
+self.deactivate_action_set(self.generated_fields.action_set_handle_actions_main)
 }
 }
 struct GeneratedFields {
