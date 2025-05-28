@@ -4,6 +4,7 @@ mod config;
 mod openvr;
 mod prelude;
 mod resource;
+mod scripting;
 mod sprite;
 mod story;
 mod types;
