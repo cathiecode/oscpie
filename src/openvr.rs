@@ -1,4 +1,4 @@
-mod input;
+pub mod input;
 
 use crate::prelude::*;
 use anyhow::{anyhow, Result};
@@ -26,6 +26,13 @@ pub enum ColorSpace {
     Auto = 0,
     Gamma = 1,
     Linear = 2,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TrackingUniverseOrigin {
+    Standing = 0,
+    Seated = 1,
+    RawAndUncalibrated = 2,
 }
 
 #[derive(Debug)]
@@ -376,6 +383,34 @@ impl Overlay {
 
         if error != sys::EVROverlayError_VROverlayError_None {
             return Err(anyhow::anyhow!("Failed to set overlay texture: {}", error));
+        }
+
+        Ok(())
+    }
+
+    pub fn set_overlay_transform_absolute(
+        &self,
+        tracking_universe_origin: TrackingUniverseOrigin,
+        transform: Affine3A,
+    ) -> Result<()> {
+        let error = unsafe {
+            self.interface
+                .0
+                .sys
+                .get()
+                .SetOverlayTransformAbsolute
+                .unwrap()(
+                self.overlay_handle,
+                tracking_universe_origin as sys::ETrackingUniverseOrigin,
+                &mut to_hmd_matrix34_t(transform),
+            )
+        };
+
+        if error != sys::EVROverlayError_VROverlayError_None {
+            return Err(anyhow::anyhow!(
+                "Failed to set overlay transform absolute: {}",
+                error
+            ));
         }
 
         Ok(())

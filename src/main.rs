@@ -1,6 +1,7 @@
 mod component;
 mod components;
 mod config;
+mod debug;
 mod openvr;
 mod prelude;
 mod resource;
@@ -12,9 +13,12 @@ mod utils;
 mod versioned;
 mod vulkan;
 
-use std::f64::consts::PI;
+use std::{f64::consts::PI, fmt::format};
 
-use crate::prelude::*;
+use crate::{
+    debug::{debug_window, rt_debug},
+    prelude::*,
+};
 use anyhow::Result;
 use components::pie_menu;
 use config::Config;
@@ -140,12 +144,15 @@ fn app() -> Result<()> {
 
     input.activate_actions_main();
     let overlay = overlay_interface.create("oscpie_overlay", "OSCPie Overlay")?;
+    overlay.show()?;
     let mut pixmap = Pixmap::new(512, 512).unwrap();
     let mut uploader = vulkan::ImageUploader::new(&pixmap, compositor.clone())?;
 
     let mut interval_timer = IntervalTimer::new(1000.0);
 
     let demo = false;
+
+    std::thread::spawn(move || debug_window());
 
     loop {
         let timing = TimingCheck::new();
@@ -168,8 +175,23 @@ fn app() -> Result<()> {
             input.update()?;
             let click_input = input.get_actions_main_in_ClickLeft()?;
             let select_input = input.get_actions_main_in_SelectLeft()?;
+            let pose = input
+                .get_actions_main_in_PoseLeft(openvr::TrackingUniverseOrigin::RawAndUncalibrated)?;
 
-            log::trace!("ClickLeft: {click_input:?}, SelectLeft: {select_input:?}");
+            if pose.active {
+                overlay.set_overlay_transform_absolute(
+                    openvr::TrackingUniverseOrigin::RawAndUncalibrated,
+                    pose.pose.unwrap(),
+                )?;
+            }
+
+            rt_debug("20_click", || {
+                format!("ClickLeft: {click_input:?}, SelectLeft: {select_input:?}")
+            });
+
+            rt_debug("30_pose", || {
+                format!("PoseLeft: {:?}, Active: {}", pose.pose, pose.active)
+            });
 
             AppInput {
                 angle: select_input.value.y.atan2(select_input.value.x),
@@ -195,7 +217,7 @@ fn app() -> Result<()> {
 
         let time_elapsed_ns = timing.get_time_ns();
         if interval_timer.update() {
-            log::info!("whole process: {time_elapsed_ns}ns");
+            rt_debug("10_FPS", || format!("whole process: {time_elapsed_ns}ns"));
         }
 
         overlay.wait_frame_sync(100)?;

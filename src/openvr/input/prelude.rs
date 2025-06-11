@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::openvr::{from_hmd_matrix34_t, CastRc, Handle, OpenVr};
+use crate::openvr::{from_hmd_matrix34_t, CastRc, Handle, OpenVr, TrackingUniverseOrigin};
 pub use crate::prelude::*;
 use glam::Vec3;
 use openvr_sys::{
@@ -266,7 +266,11 @@ impl Input {
         })
     }
 
-    fn get_pose_action_data(&self, action_handle: sys::VRActionHandle_t) -> Result<PoseInput> {
+    fn get_pose_action_data(
+        &self,
+        tracking_universe_origin: TrackingUniverseOrigin,
+        action_handle: sys::VRActionHandle_t,
+    ) -> Result<PoseInput> {
         let mut data = sys::InputPoseActionData_t {
             bActive: false,
             activeOrigin: 0,
@@ -289,7 +293,7 @@ impl Input {
         let result = unsafe {
             self.sys.get().GetPoseActionDataForNextFrame.unwrap()(
                 action_handle,
-                ETrackingUniverseOrigin_TrackingUniverseRawAndUncalibrated, // TODO: Origin
+                tracking_universe_origin as sys::ETrackingUniverseOrigin, // TODO: Origin
                 &mut data,
                 std::mem::size_of::<sys::InputPoseActionData_t>() as u32,
                 sys::k_ulInvalidInputValueHandle,

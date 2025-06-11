@@ -66,8 +66,9 @@ const inputActionFunctionByType: Record<
     pose: (actionName) => `
         pub fn get_${actionName}(
             &self,
+            tracking_universe_origin: TrackingUniverseOrigin
         ) -> Result<PoseInput> {
-            self.get_pose_action_data(self.generated_fields.action_handle_${actionName})
+            self.get_pose_action_data(tracking_universe_origin, self.generated_fields.action_handle_${actionName})
         }
     `,
     skeleton: (actionName) => `
