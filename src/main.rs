@@ -12,7 +12,7 @@ mod utils;
 mod versioned;
 mod vulkan;
 
-use std::{f64::consts::PI, fmt::format};
+use std::f32::consts::PI;
 
 use crate::{
     debug::{debug_window, rt_debug},
@@ -160,10 +160,10 @@ fn app() -> Result<()> {
             let time_as_seconds = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_secs_f64();
+                .as_secs_f32();
 
-            let angle = ((time_as_seconds * PI * 2.0 * 0.1) % (PI * 2.0)) as f32;
-            let magnitude = f64::midpoint((time_as_seconds * PI * 2.0 * 1.0).cos(), 1.0) as f32;
+            let angle = ((time_as_seconds * PI * 2.0 * 0.1) % (PI * 2.0));
+            let magnitude = f32::midpoint((time_as_seconds * PI * 2.0 * 1.0).cos(), 1.0);
 
             AppInput {
                 angle,
@@ -193,7 +193,7 @@ fn app() -> Result<()> {
             });
 
             AppInput {
-                angle: select_input.value.y.atan2(select_input.value.x),
+                angle: (-select_input.value.y).atan2(select_input.value.x).rem_euclid(PI * 2.0),
                 magnitude: select_input.value.length(),
                 click: if click_input.state { 1.0 } else { 0.0 },
             }
