@@ -36,50 +36,42 @@ const inputActionFunctionByType: Record<
     (actionName: string) => string
 > = {
     boolean: (actionName) => `
-        pub fn get_${canonicalizedActionName(actionName)}(
+        pub fn get_${actionName}(
             &self,
         ) -> Result<BooleanInput> {
-            self.get_digital_action_data(self.generated_fields.action_handle_${
-        canonicalizedActionName(actionName)
-    })
+            self.get_digital_action_data(self.generated_fields.action_handle_${actionName})
         }
     `,
     vector1: (actionName) => `
-        pub fn get_${canonicalizedActionName(actionName)}(
+        pub fn get_${actionName}(
             &self,
         ) -> Result<Vector1Input> {
-            self.get_vector1_action_data(self.generated_fields.action_handle_${
-        canonicalizedActionName(actionName)
-    })
+            self.get_vector1_action_data(self.generated_fields.action_handle_${actionName})
         }
     `,
     vector2: (actionName) => `
-        pub fn get_${canonicalizedActionName(actionName)}(
+        pub fn get_${actionName}(
             &self,
         ) -> Result<Vector2Input> {
-            self.get_vector2_action_data(self.generated_fields.action_handle_${
-        canonicalizedActionName(actionName)
-    })
+            self.get_vector2_action_data(self.generated_fields.action_handle_${actionName})
         }
     `,
     vector3: (actionName) => `
-        pub fn get_${canonicalizedActionName(actionName)}(
+        pub fn get_${actionName}(
             &self,
         ) -> Result<Vector3Input> {
-            self.get_vector3_action_data(self.generated_fields.action_handle_${
-        canonicalizedActionName(actionName)
-    })
+            self.get_vector3_action_data(self.generated_fields.action_handle_${actionName})
         }
     `,
     pose: (actionName) => `
-        pub fn get_${canonicalizedActionName(actionName)}(
+        pub fn get_${actionName}(
             &self,
         ) -> Result<PoseInput> {
-            todo!();
+            self.get_pose_action_data(self.generated_fields.action_handle_${actionName})
         }
     `,
     skeleton: (actionName) => `
-        pub fn get_${canonicalizedActionName(actionName)}(
+        pub fn get_${actionName}(
             &self,
         ) -> Result<SkeletonOutput> {
             todo!();
@@ -115,7 +107,7 @@ const inputActionFunction = (actionName: string, actionType: ActionType) => {
         throw new Error(`Invalid action type: ${actionType}`);
     }
 
-    return inputActionFunctionByType[actionType](actionName);
+    return inputActionFunctionByType[actionType](canonicalizedActionName(actionName));
 };
 
 const initFunction = (
