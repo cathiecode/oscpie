@@ -1,4 +1,4 @@
-use crate::component::Component;
+use crate::{component::Component, debug::rt_debug};
 use crate::prelude::*;
 use tiny_skia::{FillRule, Pixmap, Transform};
 
@@ -14,16 +14,74 @@ impl<'a> Props<'a> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum StateMachine {
+    Neutral, // To: Hovering, Pressing, PressingStartedInOutOfBounds
+    Hovering,
+    Pressing,
+    PressingStartedButOutOfBounds,
+    PressingStartedInOutOfBounds,
+    Clicked
+}
+
+impl StateMachine {
+    pub fn update(&mut self, is_down: bool, is_hovering_self: bool) {
+        *self = match self {
+            StateMachine::Neutral => {
+                match (is_down, is_hovering_self) {
+                    (false, false) => StateMachine::Neutral,
+                    (false, true) => StateMachine::Hovering,
+                    (true, false) => StateMachine::PressingStartedInOutOfBounds,
+                    (true, true) => StateMachine::Pressing,
+                }
+            },
+            StateMachine::Hovering => {
+                match (is_down, is_hovering_self) {
+                    (false, false) => StateMachine::Neutral,
+                    (false, true) => StateMachine::Hovering,
+                    (true, false) => StateMachine::PressingStartedInOutOfBounds,
+                    (true, true) => StateMachine::Pressing,
+                }
+            },
+            StateMachine::Pressing => {
+                match (is_down, is_hovering_self) {
+                    (false, false) => StateMachine::Neutral,
+                    (false, true) => StateMachine::Clicked,
+                    (true, false) => StateMachine::PressingStartedButOutOfBounds,
+                    (true, true) => StateMachine::Pressing,
+                }
+            },
+            StateMachine::Clicked => {
+                match (is_down, is_hovering_self) {
+                    (false, false) => StateMachine::Neutral,
+                    (false, true) => StateMachine::Hovering,
+                    (true, false) => StateMachine::PressingStartedInOutOfBounds,
+                    (true, true) => StateMachine::Pressing,
+                }
+            }
+            StateMachine::PressingStartedButOutOfBounds => {
+                match (is_down, is_hovering_self) {
+                    (false, false) => StateMachine::Neutral,
+                    (false, true) => StateMachine::Hovering,
+                    (true, false) => StateMachine::PressingStartedButOutOfBounds,
+                    (true, true) => StateMachine::Pressing,
+                }
+            }
+            StateMachine::PressingStartedInOutOfBounds => {
+                match (is_down, is_hovering_self) {
+                    (false, false) => StateMachine::Neutral,
+                    (false, true) => StateMachine::Hovering,
+                    (true, false) => StateMachine::PressingStartedInOutOfBounds,
+                    (true, true) => StateMachine::PressingStartedInOutOfBounds,
+                }
+            }
+        };
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum CallbackProps {
     Action(MenuItemAction),
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum Highlight {
-    None,
-    Soft,
-    Hard,
 }
 
 pub struct PieMenuItemComponent {
@@ -33,10 +91,11 @@ pub struct PieMenuItemComponent {
     start_angle: f32,
     end_angle: f32,
     action: MenuItemAction,
+    state_machine: StateMachine,
     callback: Box<dyn Fn(CallbackProps)>,
-    click_started: bool,
-    highlight: Highlight,
     icon_component: Option<SpriteComponent>,
+    icon_size: ExponentialSmoothing,
+    time_delta: TimeDelta,
 }
 
 impl PieMenuItemComponent {
@@ -58,9 +117,10 @@ impl PieMenuItemComponent {
             end_angle,
             action,
             callback,
-            click_started: false,
-            highlight: Highlight::None,
+            state_machine: StateMachine::Neutral,
             icon_component: icon.map(SpriteComponent::new),
+            icon_size: ExponentialSmoothing::new(0.0, 20.0),
+            time_delta: TimeDelta::new(),
         }
     }
 }
@@ -75,33 +135,32 @@ impl Component for PieMenuItemComponent {
         let clicking = input.click > 0.5 && input.magnitude > 0.5;
         let clicking_self = clicking && in_angle;
 
-        if clicking_self && !self.click_started {
-            self.click_started = true;
-        }
+        self.state_machine.update(clicking, hover_self);
 
-        if in_angle && !clicking && self.click_started {
+        if self.state_machine == StateMachine::Clicked {
             (self.callback)(CallbackProps::Action(self.action.clone()));
         }
 
-        if !clicking {
-            self.click_started = false;
-        }
+        // rt_debug("50_PieMenuItem State", || format!("{:?}", self.state_machine));
 
-        if self.click_started && clicking_self {
-            self.highlight = Highlight::Hard;
-        } else if hover_self {
-            self.highlight = Highlight::Soft;
-        } else {
-            self.highlight = Highlight::None;
-        }
+        rt_debug(|| (format!("50_PieMenuItem '{:?}' State", self.action), format!("{:?}", self.state_machine)));
+
+        let icon_size_target = match self.state_machine {
+            StateMachine::Hovering => 1.2,
+            StateMachine::Pressing => 0.8,
+            StateMachine::Clicked => 1.2,
+            _ => 1.0
+        };
+
+        self.icon_size.update(icon_size_target, self.time_delta.update_and_get_secs());
 
         if let Some(icon_component) = &mut self.icon_component {
             let middle_angle = f32::midpoint(self.start_angle, self.end_angle);
             icon_component.update(&sprite::Props {
                 x: self.center_x + self.radius * 0.7 * middle_angle.cos(),
                 y: self.center_y + self.radius * 0.7 * middle_angle.sin(),
-                width: self.radius * 0.25,
-                height: self.radius * 0.25,
+                width: self.radius * 0.25 * self.icon_size.get_current(),
+                height: self.radius * 0.25 * self.icon_size.get_current(),
                 layout_mode: sprite::LayoutMode::Center,
             });
         }
@@ -143,7 +202,7 @@ impl Component for PieMenuItemComponent {
             let mut paint = default_paint();
 
             // Draw the highlight
-            match self.highlight {
+            /*match self.highlight {
                 Highlight::Soft => {
                     paint.set_color_rgba8(255, 255, 0, 128);
                     pixmap.fill_path(&path, &paint, FillRule::EvenOdd, transform, None);
@@ -153,7 +212,7 @@ impl Component for PieMenuItemComponent {
                     pixmap.fill_path(&path, &paint, FillRule::EvenOdd, transform, None);
                 }
                 _ => {}
-            }
+            }*/
         }
 
         // Separate line

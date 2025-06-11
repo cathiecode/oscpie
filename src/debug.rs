@@ -5,11 +5,11 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
-static MESSAGES: OnceLock<Mutex<BTreeMap<&'static str, String>>> = OnceLock::new();
+static MESSAGES: OnceLock<Mutex<BTreeMap<String, String>>> = OnceLock::new();
 
-pub fn rt_debug<F>(id: &'static str, message: F)
+pub fn rt_debug<F>(message: F)
 where
-    F: FnOnce() -> String,
+    F: FnOnce() -> (String, String),
 {
     if MESSAGES.get().is_none() {
         return;
@@ -17,7 +17,9 @@ where
 
     let mut messages = MESSAGES.wait().lock().unwrap();
 
-    messages.insert(id, message());
+    let (id, message) = message();
+
+    messages.insert(id, message);
 }
 
 pub fn debug_window() {
@@ -33,6 +35,6 @@ pub fn debug_window() {
                 println!("{}: {}", id, message);
             });
         }
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }

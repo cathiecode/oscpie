@@ -8,35 +8,35 @@
                     {
                         "action": {
                             "type": "SubMenu",
-                            "to": "root"
+                            "to": "A"
                         },
                         "icon": "1"
                     },
                     {
                         "action": {
                             "type": "SubMenu",
-                            "to": "root"
+                            "to": "B"
                         },
                         "icon": "2"
                     },
                     {
                         "action": {
                             "type": "SubMenu",
-                            "to": "root"
+                            "to": "C"
                         },
                         "icon": "3"
                     },
                     {
                         "action": {
                             "type": "SubMenu",
-                            "to": "root"
+                            "to": "D"
                         },
                         "icon": "4"
                     },
                     {
                         "action": {
                             "type": "SubMenu",
-                            "to": "root"
+                            "to": "E"
                         },
                         "icon": "5"
                     }

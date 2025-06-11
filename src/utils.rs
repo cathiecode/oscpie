@@ -109,3 +109,92 @@ pub fn resolve_path(base: &str, target: &str) -> PathBuf {
 
     path.join(PathBuf::from(target))
 }
+
+pub fn exponential_smoothing(
+    current: f32,
+    target: f32,
+    speed: f32,
+    dt: f32,
+) -> f32 {
+    current + (target - current) * (1.0 - (-speed * dt).exp())
+}
+
+pub struct ExponentialSmoothing {
+    current: f32,
+    speed: f32,
+}
+
+impl ExponentialSmoothing {
+    pub fn new(current: f32, speed: f32) -> Self {
+        Self {
+            current,
+            speed,
+        }
+    }
+
+    pub fn get_current(&self) -> f32 {
+        self.current
+    }
+
+    pub fn update(&mut self, target: f32, dt: f32) -> f32 {
+        self.current = exponential_smoothing(self.current, target, self.speed, dt);
+        self.current
+    }
+}
+
+pub struct TimeDelta {
+    last_time: std::time::Instant,
+}
+
+impl TimeDelta {
+    pub fn new() -> Self {
+        Self {
+            last_time: std::time::Instant::now(),
+        }
+    }
+
+    pub fn get_without_update_secs(&self) -> f32 {
+        self.last_time.elapsed().as_secs_f32()
+    }
+
+    pub fn update_and_get_secs(&mut self) -> f32 {
+        let now = std::time::Instant::now();
+        let delta = now.duration_since(self.last_time).as_secs_f32();
+        self.last_time = now;
+        delta
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ClickStateMachineEvent {
+    Down,
+    Up,
+    Pressing,
+    Click,
+}
+
+pub struct ClickStateMachine {
+    is_down_in_last_update: bool,
+    clicked: bool
+}
+
+impl ClickStateMachine {
+    pub fn new() -> Self {
+        Self { is_down_in_last_update: false, clicked: false}
+    }
+
+    pub fn update(&mut self, is_down: bool) -> Option<ClickStateMachineEvent> {
+        self.clicked = false;
+
+        let result = match (self.is_down_in_last_update, is_down) {
+            (false, true) => Some(ClickStateMachineEvent::Down),
+            (true, false) => Some(ClickStateMachineEvent::Up),
+            (true, true) => Some(ClickStateMachineEvent::Pressing),
+            (false, false) => None,
+        };
+
+        self.is_down_in_last_update = is_down;
+
+        return result;
+    }
+}

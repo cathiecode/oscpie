@@ -184,13 +184,9 @@ fn app() -> Result<()> {
                 )?;
             }
 
-            rt_debug("20_click", || {
-                format!("ClickLeft: {click_input:?}, SelectLeft: {select_input:?}")
-            });
+            rt_debug(|| (format!("20_click"), format!("ClickLeft: {click_input:?}, SelectLeft: {select_input:?}")));
 
-            rt_debug("30_pose", || {
-                format!("PoseLeft: {:?}, Active: {}", pose.pose, pose.active)
-            });
+            rt_debug(|| (format!("30_pose"), format!("PoseLeft: {:?}, Active: {}", pose.pose, pose.active)));
 
             AppInput {
                 angle: (-select_input.value.y).atan2(select_input.value.x).rem_euclid(PI * 2.0),
@@ -216,7 +212,7 @@ fn app() -> Result<()> {
 
         let time_elapsed_ns = timing.get_time_ns();
         if interval_timer.update() {
-            rt_debug("10_FPS", || format!("whole process: {time_elapsed_ns}ns"));
+            rt_debug(|| (format!("10_FPS"), format!("whole process: {time_elapsed_ns}ns")));
         }
 
         overlay.wait_frame_sync(100)?;
