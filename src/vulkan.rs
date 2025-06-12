@@ -21,15 +21,73 @@ use vulkano::{
         },
         Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions,
     },
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    memory::{
+        allocator::{
+            AllocationCreateInfo, FreeListAllocator, GenericMemoryAllocator,
+            GenericMemoryAllocatorCreateInfo, MemoryTypeFilter,
+        },
+        MemoryProperties, MemoryPropertyFlags,
+    },
     DeviceSize, VulkanLibrary,
 };
 
 use crate::openvr::{CompositorInterface, Handle};
 
+type StandardLiteMemoryAllocator = GenericMemoryAllocator<FreeListAllocator>;
+
+trait StandardLiteMemoryAllocatorExt {
+    /// Creates a new `StandardLiteMemoryAllocator` with default configuration.
+    fn new_default_lite(device: Arc<Device>) -> Self;
+}
+
+impl StandardLiteMemoryAllocatorExt for StandardLiteMemoryAllocator {
+    /// Creates a new `StandardMemoryAllocator` with default configuration.
+    fn new_default_lite(device: Arc<Device>) -> Self {
+        let MemoryProperties {
+            memory_types,
+            memory_heaps,
+            ..
+        } = device.physical_device().memory_properties();
+
+        let mut block_sizes = vec![0; memory_types.len()];
+        let mut memory_type_bits = u32::MAX;
+
+        for (index, memory_type) in memory_types.iter().enumerate() {
+            const LARGE_HEAP_THRESHOLD: DeviceSize = 1024 * 1024 * 1024;
+
+            let heap_size = memory_heaps[memory_type.heap_index as usize].size;
+
+            block_sizes[index] = if heap_size >= LARGE_HEAP_THRESHOLD {
+                4 * 1024 * 1024
+            } else {
+                2 * 1024 * 1024
+            };
+
+            if memory_type.property_flags.intersects(
+                MemoryPropertyFlags::LAZILY_ALLOCATED
+                    | MemoryPropertyFlags::PROTECTED
+                    | MemoryPropertyFlags::DEVICE_COHERENT
+                    | MemoryPropertyFlags::RDMA_CAPABLE,
+            ) {
+                // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
+                // VUID-vkAllocateMemory-deviceCoherentMemory-02790
+                // Lazily allocated memory would just cause problems for suballocation in general.
+                memory_type_bits &= !(1 << index);
+            }
+        }
+
+        let create_info = GenericMemoryAllocatorCreateInfo {
+            block_sizes: &block_sizes,
+            memory_type_bits,
+            ..Default::default()
+        };
+
+        Self::new(device, create_info)
+    }
+}
+
 pub struct ImageUploader {
     upload_buffer: Subbuffer<[u8]>,
-    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     queue: Arc<Queue>,
     image: Arc<Image>,
     command_buffer: Arc<PrimaryAutoCommandBuffer>,
@@ -195,7 +253,9 @@ impl ImageUploader {
 
         let queue = queues.next().unwrap();
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardLiteMemoryAllocator::new_default_lite(
+            device.clone(),
+        ));
 
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
             device.clone(),
@@ -250,7 +310,6 @@ impl ImageUploader {
 
         Ok(ImageUploader {
             queue,
-            command_buffer_allocator,
             upload_buffer,
             image,
             command_buffer,
