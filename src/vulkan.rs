@@ -6,7 +6,7 @@ use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        CopyBufferToImageInfo, PrimaryCommandBufferAbstract,
+        CopyBufferToImageInfo, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
@@ -32,6 +32,7 @@ pub struct ImageUploader {
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     queue: Arc<Queue>,
     image: Arc<Image>,
+    command_buffer: Arc<PrimaryAutoCommandBuffer>,
     pixmap: *const Pixmap,
 }
 
@@ -229,11 +230,30 @@ impl ImageUploader {
         )
         .unwrap();
 
+        let mut uploads = AutoCommandBufferBuilder::primary(
+            command_buffer_allocator.clone(),
+            queue.queue_family_index(),
+            CommandBufferUsage::MultipleSubmit,
+        )
+        .unwrap();
+
+        {
+            uploads
+                .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
+                    upload_buffer.clone(),
+                    image.clone(),
+                ))
+                .unwrap();
+        }
+
+        let command_buffer = uploads.build().unwrap();
+
         Ok(ImageUploader {
             queue,
             command_buffer_allocator,
             upload_buffer,
             image,
+            command_buffer,
             pixmap: std::ptr::from_ref::<Pixmap>(pixmap),
         })
     }
@@ -244,29 +264,14 @@ impl ImageUploader {
             "pixmap mismatch"
         );
 
-        let mut uploads = AutoCommandBufferBuilder::primary(
-            self.command_buffer_allocator.clone(),
-            self.queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
-        )
-        .unwrap();
-
         {
             let mut writer = self.upload_buffer.write().unwrap();
-
             writer.copy_from_slice(pixmap.data());
-
-            uploads
-                .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
-                    self.upload_buffer.clone(),
-                    self.image.clone(),
-                ))
-                .unwrap();
         }
 
-        let _ = uploads
-            .build()
-            .unwrap()
+        let _ = self
+            .command_buffer
+            .clone()
             .execute(self.queue.clone())
             .unwrap();
 
