@@ -247,7 +247,7 @@ impl ImageUploader {
         let mut uploads = AutoCommandBufferBuilder::primary(
             self.command_buffer_allocator.clone(),
             self.queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit,
+            CommandBufferUsage::MultipleSubmit,
         )
         .unwrap();
 

@@ -22,7 +22,7 @@ impl From<MenuItemAction> for crate::types::MenuItemAction {
     fn from(val: MenuItemAction) -> Self {
         match val {
             MenuItemAction::SubMenu { to } => {
-                crate::types::MenuItemAction::SubMenu { to: to.into() }
+                crate::types::MenuItemAction::PushStack { to: to.into() }
             }
         }
     }

@@ -12,14 +12,17 @@ impl MenuId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MenuItemAction {
     Noop,
-    SubMenu { to: MenuId },
+    PopStack,
+    PushStack { to: MenuId },
 }
 
+#[derive(Debug, Clone)]
 pub struct MenuItem {
     pub action: MenuItemAction,
     pub icon: Option<String>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Menu {
     pub items: Vec<MenuItem>,
 }

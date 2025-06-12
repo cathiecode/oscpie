@@ -259,7 +259,7 @@ mod tests {
     fn pie_menu_item(callback_variable: Rc<RefCell<u32>>) -> PieMenuItemComponent {
         let start_angle = 0.0; // 0 degrees
         let end_angle = PI * 2.0 * 0.25; // 90 degrees
-        let action = MenuItemAction::SubMenu {
+        let action = MenuItemAction::PushStack {
             to: MenuId::new("sub_menu".to_string()),
         };
 
@@ -366,7 +366,7 @@ mod stories {
     static UNHOVER_ANGLE: f32 = PI * 2.0 * 0.5;
 
     fn pie_menu_item(callback_variable: Rc<RefCell<u32>>) -> PieMenuItemComponent {
-        let action = MenuItemAction::SubMenu {
+        let action = MenuItemAction::PushStack {
             to: MenuId::new("sub_menu".to_string()),
         };
 

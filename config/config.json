@@ -8,37 +8,41 @@
                     {
                         "action": {
                             "type": "SubMenu",
-                            "to": "A"
-                        },
-                        "icon": "1"
-                    },
-                    {
-                        "action": {
-                            "type": "SubMenu",
-                            "to": "B"
+                            "to": "submenu1"
                         },
                         "icon": "2"
                     },
                     {
                         "action": {
                             "type": "SubMenu",
-                            "to": "C"
+                            "to": "submenu1"
                         },
                         "icon": "3"
                     },
                     {
                         "action": {
                             "type": "SubMenu",
-                            "to": "D"
+                            "to": "submenu1"
                         },
                         "icon": "4"
                     },
                     {
                         "action": {
                             "type": "SubMenu",
-                            "to": "E"
+                            "to": "submenu1"
                         },
                         "icon": "5"
+                    }
+                ]
+            },
+            "submenu1": {
+                "items": [
+                    {
+                        "action": {
+                            "type": "SubMenu",
+                            "to": "root"
+                        },
+                        "icon": "2"
                     }
                 ]
             }

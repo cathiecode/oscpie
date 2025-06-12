@@ -12,7 +12,7 @@ mod utils;
 mod versioned;
 mod vulkan;
 
-use std::f32::consts::PI;
+use std::{cell::RefCell, collections::HashMap, f32::consts::PI, rc::Rc};
 
 use crate::{
     debug::{debug_window, rt_debug},
@@ -24,6 +24,10 @@ use config::Config;
 use resource::SPRITE_SHEET;
 use sprite::SpriteSheet;
 use tiny_skia::Pixmap;
+
+enum AppEvent {
+    MenuAction(MenuItemAction),
+}
 
 struct AppInput {
     angle: f32,
@@ -45,31 +49,93 @@ struct AppImpl {
     interval_timer_update: IntervalTimer,
     interval_timer_render: IntervalTimer,
     should_render: bool,
-    pie_menu: pie_menu::PieMenuComponent,
+    current_pie_menu_component: pie_menu::PieMenuComponent,
+    menu_map: HashMap<MenuId, Menu>,
+    received_events: Rc<RefCell<Vec<AppEvent>>>,
+    menu_stack: Vec<MenuId>,
 }
 
 impl AppImpl {
     fn new(configuration: Config) -> Result<Self> {
+        let received_events = Rc::new(RefCell::new(Vec::new()));
+
+        let mut menu_map = HashMap::new();
+
+        for (id, menu) in configuration.menus.iter() {
+            let menu: Menu = menu.clone().into();
+            menu_map.insert(id.clone().into(), menu);
+        }
+
         Ok(Self {
             fps: Fps::new(60),
             interval_timer_update: IntervalTimer::new(1000.0),
             interval_timer_render: IntervalTimer::new(1000.0),
             should_render: true,
-            pie_menu: Self::create_pie_menu(&configuration.root, &configuration),
+            current_pie_menu_component: Self::create_pie_menu(
+                menu_map
+                    .get(&configuration.root.clone().into())
+                    .unwrap()
+                    .clone(),
+                Self::event_receiver_static(received_events.clone()),
+            ),
+            menu_map,
+            received_events,
+            menu_stack: vec![configuration.root.clone().into()],
         })
     }
 
     fn create_pie_menu(
-        menu_id: &config::types::MenuId,
-        configuration: &Config,
+        menu: Menu,
+        event_receiver: Rc<dyn Fn(pie_menu::CallbackProps)>,
     ) -> pie_menu::PieMenuComponent {
         let center_x = 256.0;
         let center_y = 256.0;
         let radius = 256.0 * 0.9;
 
-        let menu: Menu = configuration.menus.get(menu_id).unwrap().clone().into(); // OPTIMIZE: do not clone
+        pie_menu::PieMenuComponent::new(center_x, center_y, radius, menu, event_receiver)
+    }
 
-        pie_menu::PieMenuComponent::new(center_x, center_y, radius, menu)
+    fn replace_pie_menu(&mut self) {
+        let Some(menu_id) = self.menu_stack.last().cloned() else {
+            log::error!("No menu ID found in the stack");
+            return;
+        };
+
+        if let Some(menu) = self.menu_map.get(&menu_id) {
+            let mut menu = menu.clone();
+
+            if self.menu_stack.len() > 1 {
+                let back_action = MenuItemAction::PopStack;
+                let back_item = MenuItem {
+                    action: back_action,
+                    icon: Some("1".to_string()), // TODO
+                };
+                menu.items.insert(0, back_item);
+            }
+
+            self.current_pie_menu_component = Self::create_pie_menu(
+                menu,
+                Self::event_receiver_static(self.received_events.clone()),
+            );
+        } else {
+            log::error!("Menu with ID {menu_id:?} not found");
+        }
+    }
+
+    fn event_receiver(&mut self) -> Rc<dyn Fn(pie_menu::CallbackProps)> {
+        Self::event_receiver_static(self.received_events.clone())
+    }
+
+    fn event_receiver_static(
+        received_events: Rc<RefCell<Vec<AppEvent>>>,
+    ) -> Rc<dyn Fn(pie_menu::CallbackProps)> {
+        Rc::new(move |action: pie_menu::CallbackProps| match action {
+            pie_menu::CallbackProps::Action(action) => {
+                received_events
+                    .borrow_mut()
+                    .push(AppEvent::MenuAction(action));
+            }
+        })
     }
 }
 
@@ -84,7 +150,41 @@ impl App for AppImpl {
             click,
         } = input;
 
-        self.pie_menu.update(&pie_menu::Props {
+        let mut should_replace_menu = false;
+
+        {
+            let mut recived_events = self.received_events.borrow_mut();
+
+            for event in recived_events.iter() {
+                match event {
+                    AppEvent::MenuAction(action) => match action {
+                        MenuItemAction::Noop => {}
+                        MenuItemAction::PopStack => {
+                            if self.menu_stack.len() > 1 {
+                                self.menu_stack.pop();
+                                should_replace_menu = true;
+                            } else {
+                                log::warn!("Attempted to pop the root menu, ignoring.");
+                            }
+                        }
+                        MenuItemAction::PushStack { to } => {
+                            self.menu_stack.push(to.clone());
+                            should_replace_menu = true;
+                        }
+                    },
+                }
+            }
+
+            if recived_events.len() > 0 {
+                recived_events.clear();
+            }
+        }
+
+        if should_replace_menu {
+            self.replace_pie_menu();
+        }
+
+        self.current_pie_menu_component.update(&pie_menu::Props {
             pie_menu_input: PieMenuInput {
                 angle,
                 magnitude,
@@ -114,7 +214,7 @@ impl App for AppImpl {
             return Ok(());
         }
 
-        self.pie_menu.render(pixmap);
+        self.current_pie_menu_component.render(pixmap);
 
         if self.interval_timer_render.update() {
             log::info!("render: {}ns", timing_check.get_time_ns());
@@ -144,14 +244,14 @@ fn app() -> Result<()> {
     input.activate_actions_main();
     let overlay = overlay_interface.create("oscpie_overlay", "OSCPie Overlay")?;
     overlay.show()?;
-    let mut pixmap = Pixmap::new(512, 512).unwrap();
+    let mut pixmap = Pixmap::new(16, 16).unwrap();
     let mut uploader = vulkan::ImageUploader::new(&pixmap, compositor.clone())?;
 
     let mut interval_timer = IntervalTimer::new(1000.0);
 
     let demo = false;
 
-    std::thread::spawn(move || debug_window());
+    // std::thread::spawn(move || debug_window());
 
     loop {
         let timing = TimingCheck::new();
@@ -184,12 +284,24 @@ fn app() -> Result<()> {
                 )?;
             }
 
-            rt_debug(|| (format!("20_click"), format!("ClickLeft: {click_input:?}, SelectLeft: {select_input:?}")));
+            rt_debug(|| {
+                (
+                    format!("20_click"),
+                    format!("ClickLeft: {click_input:?}, SelectLeft: {select_input:?}"),
+                )
+            });
 
-            rt_debug(|| (format!("30_pose"), format!("PoseLeft: {:?}, Active: {}", pose.pose, pose.active)));
+            rt_debug(|| {
+                (
+                    format!("30_pose"),
+                    format!("PoseLeft: {:?}, Active: {}", pose.pose, pose.active),
+                )
+            });
 
             AppInput {
-                angle: (-select_input.value.y).atan2(select_input.value.x).rem_euclid(PI * 2.0),
+                angle: (-select_input.value.y)
+                    .atan2(select_input.value.x)
+                    .rem_euclid(PI * 2.0),
                 magnitude: select_input.value.length(),
                 click: if click_input.state { 1.0 } else { 0.0 },
             }
@@ -212,7 +324,12 @@ fn app() -> Result<()> {
 
         let time_elapsed_ns = timing.get_time_ns();
         if interval_timer.update() {
-            rt_debug(|| (format!("10_FPS"), format!("whole process: {time_elapsed_ns}ns")));
+            rt_debug(|| {
+                (
+                    format!("10_FPS"),
+                    format!("whole process: {time_elapsed_ns}ns"),
+                )
+            });
         }
 
         overlay.wait_frame_sync(100)?;
