@@ -244,7 +244,7 @@ fn app() -> Result<()> {
     input.activate_actions_main();
     let overlay = overlay_interface.create("oscpie_overlay", "OSCPie Overlay")?;
     overlay.show()?;
-    let mut pixmap = Pixmap::new(16, 16).unwrap();
+    let mut pixmap = Pixmap::new(512, 512).unwrap();
     let mut uploader = vulkan::ImageUploader::new(&pixmap, compositor.clone())?;
 
     let mut interval_timer = IntervalTimer::new(1000.0);
