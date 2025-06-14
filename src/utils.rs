@@ -11,7 +11,7 @@ where
 
 pub struct Fps {
     last_update: std::time::Instant,
-    last_fps: u32,
+    last: f32,
     update_interval_in_frame: u32,
     frame_count: u32,
 }
@@ -20,12 +20,13 @@ impl Fps {
     pub fn new(update_interval_in_frame: u32) -> Self {
         Self {
             last_update: std::time::Instant::now(),
-            last_fps: 0,
+            last: 0.0,
             update_interval_in_frame,
             frame_count: 0,
         }
     }
 
+    #[allow(clippy::cast_precision_loss)]
     pub fn update(&mut self) {
         self.frame_count += 1;
 
@@ -34,15 +35,15 @@ impl Fps {
             let elapsed = now.duration_since(self.last_update).as_secs_f32();
 
             if elapsed > 0.0 {
-                self.last_fps = (self.frame_count as f32 / elapsed) as u32;
+                self.last = self.frame_count as f32 / elapsed;
                 self.last_update = now;
                 self.frame_count = 0;
             }
         }
     }
 
-    pub fn get_fps(&self) -> u32 {
-        self.last_fps
+    pub fn get_fps(&self) -> f32 {
+        self.last
     }
 }
 
@@ -78,7 +79,8 @@ impl IntervalTimer {
             last_time: std::time::Instant::now(),
         }
     }
-
+    
+    #[allow(clippy::cast_precision_loss)]
     pub fn update(&mut self) -> bool {
         let now = std::time::Instant::now();
         let elapsed = now.duration_since(self.last_time).as_millis();
