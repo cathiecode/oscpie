@@ -33,15 +33,11 @@ impl From<Vec<config::types::KeyAction>> for KeyStroke {
 #[derive(Debug, Clone)]
 pub struct KeyStrokeButtonAction {
     key_stroke: KeyStroke,
-    last_value: bool,
 }
 
 impl KeyStrokeButtonAction {
     pub fn new(key_stroke: KeyStroke) -> Self {
-        KeyStrokeButtonAction {
-            key_stroke,
-            last_value: false,
-        }
+        KeyStrokeButtonAction { key_stroke }
     }
 }
 
@@ -50,7 +46,7 @@ impl MenuActionBehaviour<()> for KeyStrokeButtonAction {
         ();
     }
 
-    fn on_change(&mut self, value: ()) {
+    fn on_change(&mut self, _value: ()) {
         send_keystroke(&self.key_stroke);
     }
 }
