@@ -15,10 +15,12 @@ impl ExecOneShotButtonAction {
     }
 }
 
-impl MenuActionBehaviour<()> for ExecOneShotButtonAction {
-    fn value(&self) {}
+impl MenuActionBehaviour<bool> for ExecOneShotButtonAction {
+    fn value(&self) -> bool {
+        false
+    }
 
-    fn on_change(&mut self, _value: ()) {
+    fn on_change(&mut self, _value: bool) {
         std::process::Command::new(&self.program_path)
             .args(&self.args)
             .spawn()

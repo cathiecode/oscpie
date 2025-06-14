@@ -23,12 +23,12 @@ impl AppEventMenuActionBehaviour {
     }
 }
 
-impl MenuActionBehaviour<()> for AppEventMenuActionBehaviour {
-    fn value(&self) {
-        ();
+impl MenuActionBehaviour<bool> for AppEventMenuActionBehaviour {
+    fn value(&self) -> bool {
+        false
     }
 
-    fn on_change(&mut self, (): ()) {
+    fn on_change(&mut self, _value: bool) {
         self.received_events.borrow_mut().push(self.event.clone());
     }
 }
@@ -56,7 +56,7 @@ impl MenuId {
 #[derive(Debug, Clone)]
 pub enum MenuItemAction {
     Noop,
-    OneShotButton(Rc<RefCell<dyn MenuActionBehaviour<()>>>),
+    OneShotButton(Rc<RefCell<dyn MenuActionBehaviour<bool>>>),
     Button(Rc<RefCell<dyn MenuActionBehaviour<bool>>>),
 }
 

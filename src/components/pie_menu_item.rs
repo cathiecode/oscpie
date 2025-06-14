@@ -132,7 +132,7 @@ impl Component for PieMenuItemComponent {
             }
             MenuItemAction::OneShotButton(behaviour) => {
                 if self.state_machine == StateMachine::Clicked {
-                    behaviour.borrow_mut().on_change(());
+                    behaviour.borrow_mut().on_change(true);
                 }
             }
             MenuItemAction::Button(behaviour) => {
@@ -227,12 +227,12 @@ mod tests {
         }
     }
 
-    impl MenuActionBehaviour<()> for CountAction {
-        fn value(&self) {
-            ();
+    impl MenuActionBehaviour<bool> for CountAction {
+        fn value(&self) -> bool{
+            false
         }
 
-        fn on_change(&mut self, _value: ()) {
+        fn on_change(&mut self, _value: bool) {
             *self.count.borrow_mut() += 1;
         }
     }
@@ -345,12 +345,12 @@ mod stories {
         }
     }
 
-    impl MenuActionBehaviour<()> for CountAction {
-        fn value(&self) {
-            ();
+    impl MenuActionBehaviour<bool> for CountAction {
+        fn value(&self) -> bool{
+            false
         }
 
-        fn on_change(&mut self, _value: ()) {
+        fn on_change(&mut self, _value: bool) {
             *self.count.borrow_mut() += 1;
         }
     }

@@ -43,10 +43,12 @@ impl KeyStrokeButtonAction {
     }
 }
 
-impl MenuActionBehaviour<()> for KeyStrokeButtonAction {
-    fn value(&self) {}
+impl MenuActionBehaviour<bool> for KeyStrokeButtonAction {
+    fn value(&self) -> bool {
+        false
+    }
 
-    fn on_change(&mut self, _value: ()) {
+    fn on_change(&mut self, _value: bool) {
         if let Err(err) = send_keystroke(&self.key_stroke) {
             log::error!("Failed to send keystroke: {err}");
         }
