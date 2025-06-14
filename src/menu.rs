@@ -83,8 +83,8 @@ impl MenuItemAction {
 
 #[derive(Debug, Clone)]
 pub struct MenuItem {
-    pub action: MenuItemAction,
-    pub icon: Option<String>,
+    action: MenuItemAction,
+    icon: Option<String>,
 }
 
 impl MenuItem {
@@ -100,6 +100,14 @@ impl MenuItem {
             action: MenuItemAction::from_config(&item.action, app_received_events),
             icon: item.icon.clone(),
         }
+    }
+
+    pub fn action(&self) -> &MenuItemAction {
+        &self.action
+    }
+
+    pub fn icon(&self) -> Option<&String> {
+        self.icon.as_ref()
     }
 }
 

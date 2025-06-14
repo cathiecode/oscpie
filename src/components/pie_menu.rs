@@ -41,9 +41,8 @@ impl PieMenuComponent {
                     radius,
                     start_angle,
                     end_angle,
-                    item.action.clone(),
-                    item.icon
-                        .as_ref()
+                    item.action().clone(),
+                    item.icon()
                         .map(|icon_sprite_id| get_sprite_sheet().cutout(icon_sprite_id).unwrap()), // FIXME: Not testable
                 )
             })
@@ -147,22 +146,10 @@ mod stories {
 
         let menu = Menu {
             items: vec![
-                MenuItem {
-                    action: MenuItemAction::Noop,
-                    icon: None,
-                },
-                MenuItem {
-                    action: MenuItemAction::Noop,
-                    icon: None,
-                },
-                MenuItem {
-                    action: MenuItemAction::Noop,
-                    icon: None,
-                },
-                MenuItem {
-                    action: MenuItemAction::Noop,
-                    icon: None,
-                },
+                MenuItem::new(MenuItemAction::Noop, None),
+                MenuItem::new(MenuItemAction::Noop, None),
+                MenuItem::new(MenuItemAction::Noop, None),
+                MenuItem::new(MenuItemAction::Noop, None),
             ],
         };
 
