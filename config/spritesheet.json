@@ -1,7 +1,7 @@
 {
     "image": "spritesheet_image.png",
     "sprites": {
-        "1": {
+        "back": {
             "name": "back",
             "width": 64,
             "height": 64,
@@ -34,6 +34,13 @@
             "width": 64,
             "height": 64,
             "x_start": 256,
+            "y_start": 0
+        },
+        "spin": {
+            "name": "spin",
+            "width": 64,
+            "height": 64,
+            "x_start": 320,
             "y_start": 0
         }
     }

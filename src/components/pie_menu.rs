@@ -1,4 +1,4 @@
-use tiny_skia::{Pixmap, Rect, Transform};
+use tiny_skia::{Pixmap, Transform};
 
 use crate::{component::Component, prelude::*, resource::get_sprite_sheet};
 

@@ -1,4 +1,6 @@
+
 use crate::prelude::*;
+use crate::resource::get_sprite_sheet;
 use crate::{component::Component, debug::rt_debug};
 use tiny_skia::{Pixmap, Transform};
 
@@ -78,6 +80,8 @@ pub struct PieMenuItemComponent {
     icon_component: Option<SpriteComponent>,
     icon_size: ExponentialSmoothing<f32>,
     time_delta: TimeDelta,
+    spin_icon: SpriteComponent,
+    spin_icon_size: ExponentialSmoothing<f32>,
 }
 
 impl PieMenuItemComponent {
@@ -102,6 +106,8 @@ impl PieMenuItemComponent {
             icon_component: icon.map(SpriteComponent::new),
             icon_size: ExponentialSmoothing::new(0.0, 20.0),
             time_delta: TimeDelta::new(),
+            spin_icon: SpriteComponent::new(get_sprite_sheet().cutout("spin").unwrap()),
+            spin_icon_size: ExponentialSmoothing::new(0.0, 10.0),
         }
     }
 }
@@ -109,11 +115,14 @@ impl PieMenuItemComponent {
 impl Component for PieMenuItemComponent {
     type Props<'a> = Props<'a>;
 
+    #[allow(clippy::cast_possible_truncation)]
     fn update(&mut self, props: &Props) {
         let input = &props.pie_menu_input;
         let in_angle = self.start_angle <= input.angle && input.angle <= self.end_angle;
         let hover_self = in_angle && input.magnitude > 0.5;
         let clicking = input.click > 0.5 && input.magnitude > 0.5;
+
+        self.time_delta.update_and_get_secs();
 
         self.state_machine.update(clicking, hover_self);
 
@@ -142,6 +151,20 @@ impl Component for PieMenuItemComponent {
             }
         }
 
+        let spin_icon_scale = self.spin_icon_size.update(
+            match &self.action {
+                MenuItemAction::Noop => 0.1,
+                MenuItemAction::OneShotButton(behaviour) | MenuItemAction::Button(behaviour) => {
+                    if behaviour.borrow().value() {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+            },
+            self.time_delta.get_without_update_secs(),
+        );
+
         // rt_debug("50_PieMenuItem State", || format!("{:?}", self.state_machine));
 
         rt_debug(|| {
@@ -159,18 +182,29 @@ impl Component for PieMenuItemComponent {
         };
 
         self.icon_size
-            .update(icon_size_target, self.time_delta.update_and_get_secs());
+            .update(icon_size_target, self.time_delta.get_without_update_secs());
+
+        let middle_angle = f32::midpoint(self.start_angle, self.end_angle);
 
         if let Some(icon_component) = &mut self.icon_component {
-            let middle_angle = f32::midpoint(self.start_angle, self.end_angle);
             icon_component.update(&sprite::Props {
                 x: self.center_x + self.radius * 0.7 * middle_angle.cos(),
                 y: self.center_y + self.radius * 0.7 * middle_angle.sin(),
                 width: self.radius * 0.25 * self.icon_size.get_current(),
                 height: self.radius * 0.25 * self.icon_size.get_current(),
+                rotate: 0.0,
                 layout_mode: sprite::LayoutMode::Center,
             });
         }
+
+        self.spin_icon.update(&sprite::Props {
+            x: self.center_x + self.radius * 0.7 * middle_angle.cos(),
+            y: self.center_y + self.radius * 0.7 * middle_angle.sin(),
+            width: self.radius * 0.4 * spin_icon_scale,
+            height: self.radius * 0.4 * spin_icon_scale,
+            rotate: ((get_time_since_start_secs_f64() as f32) % 360.0) * (360.0 / 1.0),
+            layout_mode: sprite::LayoutMode::Center,
+        });
     }
     fn render(&self, pixmap: &mut Pixmap) {
         let transform = Transform::from_translate(self.center_x, self.center_y);
@@ -205,6 +239,13 @@ impl Component for PieMenuItemComponent {
         {
             if let Some(icon_component) = &self.icon_component {
                 icon_component.render(pixmap);
+            }
+        }
+
+        // Spin icon
+        {
+            if self.spin_icon_size.get_current() > 0.01 {
+                self.spin_icon.render(pixmap);
             }
         }
     }

@@ -150,23 +150,53 @@ where
 
 pub struct TimeDelta {
     last_time: std::time::Instant,
+    last_delta: f32,
 }
 
 impl TimeDelta {
     pub fn new() -> Self {
         Self {
             last_time: std::time::Instant::now(),
+            last_delta: 0.0,
         }
     }
 
     pub fn get_without_update_secs(&self) -> f32 {
-        self.last_time.elapsed().as_secs_f32()
+        self.last_delta
     }
 
     pub fn update_and_get_secs(&mut self) -> f32 {
         let now = std::time::Instant::now();
         let delta = now.duration_since(self.last_time).as_secs_f32();
+        self.last_delta = delta;
         self.last_time = now;
         delta
+    }
+}
+
+static START_TIME: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+pub fn get_start_time() -> &'static std::time::Instant {
+    START_TIME.get_or_init(std::time::Instant::now)
+}
+
+pub fn get_time_since_start_secs_f64() -> f64 {
+    get_start_time().elapsed().as_secs_f64()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::utils::get_start_time;
+
+    #[test]
+    fn test_get_time_since_start_secs_f64() {
+        let start_time = get_start_time();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let elapsed = start_time.elapsed().as_secs_f64();
+        let time_since_start = super::get_time_since_start_secs_f64();
+        assert!(
+            (elapsed - time_since_start).abs() < 0.05,
+            "Time since start is not accurate"
+        );
     }
 }

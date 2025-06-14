@@ -9,6 +9,7 @@ pub struct Props {
     pub y: f32,
     pub width: f32,
     pub height: f32,
+    pub rotate: f32,
     pub layout_mode: LayoutMode,
 }
 
@@ -20,6 +21,7 @@ pub struct SpriteComponent {
     y: f32,
     scale_x: f32,
     scale_y: f32,
+    rotate: f32,
 }
 
 #[allow(clippy::cast_precision_loss)]
@@ -36,6 +38,7 @@ impl SpriteComponent {
             y: 0.0,
             scale_x: 1.0,
             scale_y: 1.0,
+            rotate: 0.0,
         }
     }
 
@@ -51,6 +54,8 @@ impl SpriteComponent {
             props.width / self.image_width as f32,
             props.height / self.image_height as f32,
         );
+
+        self.rotate = props.rotate;
     }
 
     pub fn render(&self, target: &mut Pixmap) {
@@ -65,6 +70,11 @@ impl SpriteComponent {
             self.pixmap.as_ref(),
             &paint,
             tiny_skia::Transform::default()
+                .post_rotate_at(
+                    self.rotate,
+                    self.image_width as f32 / 2.0,
+                    self.image_height as f32 / 2.0,
+                )
                 .post_scale(self.scale_x, self.scale_y)
                 .post_translate(self.x, self.y),
             None,
@@ -101,6 +111,7 @@ mod stories {
                 y: pixmap.height() as f32 / 2.0,
                 width: pixmap.width() as f32 / 2.0,
                 height: pixmap.height() as f32 / 2.0,
+                rotate: 0.0,
                 layout_mode: LayoutMode::Center,
             };
 
