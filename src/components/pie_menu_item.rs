@@ -76,7 +76,7 @@ pub struct PieMenuItemComponent {
     action: MenuItemAction,
     state_machine: StateMachine,
     icon_component: Option<SpriteComponent>,
-    icon_size: ExponentialSmoothing,
+    icon_size: ExponentialSmoothing<f32>,
     time_delta: TimeDelta,
 }
 

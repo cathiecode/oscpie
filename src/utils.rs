@@ -79,7 +79,7 @@ impl IntervalTimer {
             last_time: std::time::Instant::now(),
         }
     }
-
+    
     #[allow(clippy::cast_precision_loss)]
     pub fn update(&mut self) -> bool {
         let now = std::time::Instant::now();
@@ -112,25 +112,34 @@ pub fn resolve_path(base: &str, target: &str) -> PathBuf {
     path.join(PathBuf::from(target))
 }
 
-pub fn exponential_smoothing(current: f32, target: f32, speed: f32, dt: f32) -> f32 {
+pub fn exponential_smoothing<T>(current: T, target: T, speed: f32, dt: f32) -> T
+where
+    T: Copy + std::ops::Add<Output = T> + std::ops::Sub<Output = T> + std::ops::Mul<f32, Output = T>,
+{
     current + (target - current) * (1.0 - (-speed * dt).exp())
 }
 
-pub struct ExponentialSmoothing {
-    current: f32,
+pub struct ExponentialSmoothing<T> {
+    current: T,
     speed: f32,
 }
 
-impl ExponentialSmoothing {
-    pub fn new(current: f32, speed: f32) -> Self {
+impl<T> ExponentialSmoothing<T>
+where
+    T: Copy
+        + std::ops::Add<Output = T>
+        + std::ops::Sub<Output = T>
+        + std::ops::Mul<f32, Output = T>,
+{
+    pub fn new(current: T, speed: f32) -> Self {
         Self { current, speed }
     }
 
-    pub fn get_current(&self) -> f32 {
+    pub fn get_current(&self) -> T {
         self.current
     }
 
-    pub fn update(&mut self, target: f32, dt: f32) -> f32 {
+    pub fn update(&mut self, target: T, dt: f32) -> T {
         self.current = exponential_smoothing(self.current, target, self.speed, dt);
         self.current
     }
