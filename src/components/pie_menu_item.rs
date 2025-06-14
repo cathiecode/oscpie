@@ -228,7 +228,7 @@ mod tests {
     }
 
     impl MenuActionBehaviour<bool> for CountAction {
-        fn value(&self) -> bool{
+        fn value(&self) -> bool {
             false
         }
 
@@ -346,7 +346,7 @@ mod stories {
     }
 
     impl MenuActionBehaviour<bool> for CountAction {
-        fn value(&self) -> bool{
+        fn value(&self) -> bool {
             false
         }
 

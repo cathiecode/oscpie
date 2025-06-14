@@ -120,11 +120,8 @@ impl PieMenuComponent {
             let x = self.input_angle.cos() * self.input_magnitude * self.radius * 0.25;
             let y = self.input_angle.sin() * self.input_magnitude * self.radius * 0.25;
 
-            let path = tiny_skia::PathBuilder::from_circle(
-                self.center_x + x,
-                self.center_y + y,
-                50.0,
-            );
+            let path =
+                tiny_skia::PathBuilder::from_circle(self.center_x + x, self.center_y + y, 50.0);
 
             pixmap.fill_path(
                 &path.unwrap(),

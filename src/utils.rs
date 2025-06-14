@@ -79,7 +79,7 @@ impl IntervalTimer {
             last_time: std::time::Instant::now(),
         }
     }
-    
+
     #[allow(clippy::cast_precision_loss)]
     pub fn update(&mut self) -> bool {
         let now = std::time::Instant::now();
@@ -114,7 +114,10 @@ pub fn resolve_path(base: &str, target: &str) -> PathBuf {
 
 pub fn exponential_smoothing<T>(current: T, target: T, speed: f32, dt: f32) -> T
 where
-    T: Copy + std::ops::Add<Output = T> + std::ops::Sub<Output = T> + std::ops::Mul<f32, Output = T>,
+    T: Copy
+        + std::ops::Add<Output = T>
+        + std::ops::Sub<Output = T>
+        + std::ops::Mul<f32, Output = T>,
 {
     current + (target - current) * (1.0 - (-speed * dt).exp())
 }

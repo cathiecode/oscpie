@@ -8,10 +8,7 @@ pub struct ExecOneShotButtonAction {
 
 impl ExecOneShotButtonAction {
     pub fn new(program_path: String, args: Vec<String>) -> Self {
-        ExecOneShotButtonAction {
-            program_path,
-            args
-        }
+        ExecOneShotButtonAction { program_path, args }
     }
 }
 
