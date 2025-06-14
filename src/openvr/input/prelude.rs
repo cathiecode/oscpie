@@ -63,12 +63,12 @@ impl Input {
     }
 
     pub fn update(&mut self) -> Result<()> {
-        let len = self.active_action_sets.len() as u32;
+        let len = u32::try_from(self.active_action_sets.len())?;
 
         let result = unsafe {
             self.sys.get().UpdateActionState.unwrap()(
                 self.active_action_sets.as_mut_ptr(),
-                std::mem::size_of::<VRActiveActionSet_t>() as u32,
+                u32::try_from(std::mem::size_of::<VRActiveActionSet_t>())?,
                 len,
             )
         };
@@ -167,7 +167,7 @@ impl Input {
             self.sys.get().GetDigitalActionData.unwrap()(
                 action_handle,
                 &mut data,
-                std::mem::size_of::<sys::InputDigitalActionData_t>() as u32,
+                u32::try_from(std::mem::size_of::<sys::InputDigitalActionData_t>())?,
                 sys::k_ulInvalidInputValueHandle,
             )
         };
@@ -209,7 +209,7 @@ impl Input {
             self.sys.get().GetAnalogActionData.unwrap()(
                 action_handle,
                 &mut data,
-                std::mem::size_of::<sys::InputAnalogActionData_t>() as u32,
+                u32::try_from(std::mem::size_of::<sys::InputAnalogActionData_t>())?,
                 sys::k_ulInvalidInputValueHandle,
             )
         };
@@ -295,7 +295,7 @@ impl Input {
                 action_handle,
                 tracking_universe_origin as sys::ETrackingUniverseOrigin, // TODO: Origin
                 &mut data,
-                std::mem::size_of::<sys::InputPoseActionData_t>() as u32,
+                u32::try_from(std::mem::size_of::<sys::InputPoseActionData_t>())?,
                 sys::k_ulInvalidInputValueHandle,
             )
         };
