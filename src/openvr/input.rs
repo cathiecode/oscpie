@@ -1,5 +1,5 @@
 #[rustfmt::skip]
-#[allow(nonstandard_style, unused, clippy::all)]
+#[allow(nonstandard_style, unused, clippy::all, clippy::pedantic)]
 pub mod generated;
 
 #[allow(unused)]
