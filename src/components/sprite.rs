@@ -22,6 +22,7 @@ pub struct SpriteComponent {
     scale_y: f32,
 }
 
+#[allow(clippy::cast_precision_loss)]
 impl SpriteComponent {
     pub fn new(pixmap: Pixmap) -> Self {
         let image_width = pixmap.width();
@@ -53,8 +54,10 @@ impl SpriteComponent {
     }
 
     pub fn render(&self, target: &mut Pixmap) {
-        let mut paint = PixmapPaint::default();
-        paint.quality = FilterQuality::Nearest;
+        let paint = PixmapPaint {
+            quality: FilterQuality::Nearest,
+            ..PixmapPaint::default()
+        };
 
         target.draw_pixmap(
             0,
@@ -84,6 +87,7 @@ mod stories {
     use super::*;
     use tiny_skia::Pixmap;
 
+    #[allow(clippy::cast_precision_loss)]
     #[test]
     fn story_sprite_component() {
         story("sprite", |pixmap| {
