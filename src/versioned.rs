@@ -91,7 +91,7 @@ where
             let version = *path.last().unwrap();
 
             if target_version == version {
-                return Some(path.iter().map(|item| item.clone().clone()).collect());
+                return Some(path.iter().map(|item| (*item).clone()).collect());
             }
 
             if !visited.contains(version) {
