@@ -46,7 +46,7 @@ struct AppImpl {
 }
 
 impl AppImpl {
-    fn new(configuration: Config) -> Result<Self> {
+    fn new(configuration: Config) -> AppImpl {
         let received_events = Rc::new(RefCell::new(Vec::new()));
 
         let mut menu_map = HashMap::new();
@@ -56,7 +56,7 @@ impl AppImpl {
             menu_map.insert(MenuId::from_config(id), menu);
         }
 
-        Ok(Self {
+        Self {
             fps: Fps::new(60),
             interval_timer_update: IntervalTimer::new(1000.0),
             interval_timer_render: IntervalTimer::new(1000.0),
@@ -70,7 +70,7 @@ impl AppImpl {
             menu_map,
             received_events,
             menu_stack: vec![MenuId::from_config(&configuration.root)],
-        })
+        }
     }
 
     fn create_pie_menu(menu: Menu) -> pie_menu::PieMenuComponent {
@@ -199,7 +199,7 @@ fn app() -> Result<()> {
         .set(SpriteSheet::load(resolve_path("config/config.json", &config.sprite_sheet)).unwrap())
         .unwrap();
 
-    let mut app = AppImpl::new(config)?;
+    let mut app = AppImpl::new(config);
 
     let openvr = openvr::Handle::<openvr::OpenVr>::new(openvr::EVRApplicationType::Overlay)?;
     let overlay_interface = openvr.overlay()?;
