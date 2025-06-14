@@ -115,15 +115,22 @@ impl PieMenuComponent {
         // Stick
         {
             let mut paint = default_paint();
-            paint.set_color(tiny_skia::Color::from_rgba(1.0, 1.0, 1.0, 1.0).unwrap());
+            paint.set_color(tiny_skia::Color::from_rgba(0.5, 0.5, 0.55, 1.0).unwrap());
 
-            let x = self.input_angle.cos() * self.input_magnitude * self.radius;
-            let y = self.input_angle.sin() * self.input_magnitude * self.radius;
+            let x = self.input_angle.cos() * self.input_magnitude * self.radius * 0.25;
+            let y = self.input_angle.sin() * self.input_magnitude * self.radius * 0.25;
 
-            pixmap.fill_rect(
-                Rect::from_ltrb(x - 10.0, y - 10.0, x + 10.0, y + 10.0).unwrap(),
+            let path = tiny_skia::PathBuilder::from_circle(
+                self.center_x + x,
+                self.center_y + y,
+                50.0,
+            );
+
+            pixmap.fill_path(
+                &path.unwrap(),
                 &paint,
-                Transform::from_translate(self.center_x, self.center_y),
+                tiny_skia::FillRule::Winding,
+                Transform::from_translate(0.0, 0.0),
                 None,
             );
         }
