@@ -5,8 +5,9 @@ use tiny_skia::Pixmap;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        CopyBufferToImageInfo, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract,
+        allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
+        AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferToImageInfo,
+        PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
@@ -95,7 +96,11 @@ pub struct ImageUploader {
 }
 
 impl ImageUploader {
-    pub fn new(pixmap: &Pixmap, compositor_interface: Handle<CompositorInterface>) -> Result<Self> {
+    #[allow(clippy::too_many_lines)]
+    pub fn new(
+        pixmap: &Pixmap,
+        compositor_interface: &Handle<CompositorInterface>,
+    ) -> Result<Self> {
         let width = pixmap.width();
         let height = pixmap.height();
         let extent = [width, height, 1];
@@ -104,11 +109,10 @@ impl ImageUploader {
 
         let instance_flags_request =
             compositor_interface.get_vulkan_instance_extensions_required()?;
-        let mut instance_extensions = InstanceExtensions::from_iter(
-            instance_flags_request
-                .iter()
-                .map(std::string::String::as_str),
-        );
+        let mut instance_extensions: InstanceExtensions = instance_flags_request
+            .iter()
+            .map(std::string::String::as_str)
+            .collect();
 
         instance_extensions.ext_debug_utils = true;
 
@@ -136,69 +140,7 @@ impl ImageUploader {
         .unwrap();
 
         if log_enabled!(log::Level::Trace) {
-            unsafe {
-                forget(DebugUtilsMessenger::new(
-                    instance.clone(),
-                    DebugUtilsMessengerCreateInfo {
-                        message_severity: DebugUtilsMessageSeverity::ERROR
-                            | DebugUtilsMessageSeverity::WARNING
-                            | DebugUtilsMessageSeverity::INFO
-                            | DebugUtilsMessageSeverity::VERBOSE,
-                        message_type: DebugUtilsMessageType::GENERAL
-                            | DebugUtilsMessageType::VALIDATION
-                            | DebugUtilsMessageType::PERFORMANCE,
-                        ..DebugUtilsMessengerCreateInfo::user_callback(
-                            DebugUtilsMessengerCallback::new(
-                                |message_severity, message_type, callback_data| {
-                                    let severity = if message_severity
-                                        .intersects(DebugUtilsMessageSeverity::ERROR)
-                                    {
-                                        "error"
-                                    } else if message_severity
-                                        .intersects(DebugUtilsMessageSeverity::WARNING)
-                                    {
-                                        "warning"
-                                    } else if message_severity
-                                        .intersects(DebugUtilsMessageSeverity::INFO)
-                                    {
-                                        "information"
-                                    } else if message_severity
-                                        .intersects(DebugUtilsMessageSeverity::VERBOSE)
-                                    {
-                                        "verbose"
-                                    } else {
-                                        panic!("no-impl");
-                                    };
-
-                                    let ty = if message_type
-                                        .intersects(DebugUtilsMessageType::GENERAL)
-                                    {
-                                        "general"
-                                    } else if message_type
-                                        .intersects(DebugUtilsMessageType::VALIDATION)
-                                    {
-                                        "validation"
-                                    } else if message_type
-                                        .intersects(DebugUtilsMessageType::PERFORMANCE)
-                                    {
-                                        "performance"
-                                    } else {
-                                        panic!("no-impl");
-                                    };
-
-                                    trace!(
-                                        "{} {} {}: {}",
-                                        callback_data.message_id_name.unwrap_or("unknown"),
-                                        ty,
-                                        severity,
-                                        callback_data.message
-                                    );
-                                },
-                            ),
-                        )
-                    },
-                ));
-            };
+            Self::setup_debug_layer(&instance);
         }
 
         let (physical_device, queue_family_index) = instance
@@ -230,11 +172,10 @@ impl ImageUploader {
         let device_extensions_request =
             compositor_interface.get_vulkan_device_extensions_required(&physical_device)?;
 
-        let device_extensions = DeviceExtensions::from_iter(
-            device_extensions_request
-                .iter()
-                .map(|s: &String| s.as_str()),
-        );
+        let device_extensions: DeviceExtensions = device_extensions_request
+            .iter()
+            .map(|s: &String| s.as_str())
+            .collect();
 
         debug!("Vulkan device extensions: {device_extensions:?}");
 
@@ -259,7 +200,7 @@ impl ImageUploader {
 
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
             device.clone(),
-            Default::default(),
+            StandardCommandBufferAllocatorCreateInfo::default(),
         ));
 
         let upload_buffer: vulkano::buffer::Subbuffer<[u8]> = Buffer::new_slice(
@@ -315,6 +256,70 @@ impl ImageUploader {
             command_buffer,
             pixmap: std::ptr::from_ref::<Pixmap>(pixmap),
         })
+    }
+
+    fn setup_debug_layer(instance: &Arc<Instance>) {
+        unsafe {
+            forget(DebugUtilsMessenger::new(
+                instance.clone(),
+                DebugUtilsMessengerCreateInfo {
+                    message_severity: DebugUtilsMessageSeverity::ERROR
+                        | DebugUtilsMessageSeverity::WARNING
+                        | DebugUtilsMessageSeverity::INFO
+                        | DebugUtilsMessageSeverity::VERBOSE,
+                    message_type: DebugUtilsMessageType::GENERAL
+                        | DebugUtilsMessageType::VALIDATION
+                        | DebugUtilsMessageType::PERFORMANCE,
+                    ..DebugUtilsMessengerCreateInfo::user_callback(
+                        DebugUtilsMessengerCallback::new(
+                            |message_severity, message_type, callback_data| {
+                                let severity = if message_severity
+                                    .intersects(DebugUtilsMessageSeverity::ERROR)
+                                {
+                                    "error"
+                                } else if message_severity
+                                    .intersects(DebugUtilsMessageSeverity::WARNING)
+                                {
+                                    "warning"
+                                } else if message_severity
+                                    .intersects(DebugUtilsMessageSeverity::INFO)
+                                {
+                                    "information"
+                                } else if message_severity
+                                    .intersects(DebugUtilsMessageSeverity::VERBOSE)
+                                {
+                                    "verbose"
+                                } else {
+                                    panic!("no-impl");
+                                };
+
+                                let ty = if message_type.intersects(DebugUtilsMessageType::GENERAL)
+                                {
+                                    "general"
+                                } else if message_type.intersects(DebugUtilsMessageType::VALIDATION)
+                                {
+                                    "validation"
+                                } else if message_type
+                                    .intersects(DebugUtilsMessageType::PERFORMANCE)
+                                {
+                                    "performance"
+                                } else {
+                                    panic!("no-impl");
+                                };
+
+                                trace!(
+                                    "{} {} {}: {}",
+                                    callback_data.message_id_name.unwrap_or("unknown"),
+                                    ty,
+                                    severity,
+                                    callback_data.message
+                                );
+                            },
+                        ),
+                    )
+                },
+            ));
+        };
     }
 
     pub fn upload(&mut self, pixmap: &Pixmap) -> Arc<Image> {
