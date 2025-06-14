@@ -160,13 +160,12 @@ impl App for AppImpl {
             self.replace_pie_menu();
         }
 
-        self.current_pie_menu_component.update(&pie_menu::Props {
-            pie_menu_input: PieMenuInput {
+        self.current_pie_menu_component
+            .update(&pie_menu::Props::new(PieMenuInput {
                 angle,
                 magnitude,
                 click,
-            },
-        });
+            }));
 
         self.fps.update();
 

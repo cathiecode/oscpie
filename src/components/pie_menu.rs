@@ -5,7 +5,7 @@ use crate::{component::Component, prelude::*, resource::get_sprite_sheet};
 use super::pie_menu_item;
 
 pub struct Props {
-    pub pie_menu_input: PieMenuInput,
+    pie_menu_input: PieMenuInput,
 }
 
 impl Props {
