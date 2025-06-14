@@ -67,11 +67,6 @@ impl StateMachine {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum CallbackProps {
-    Action(MenuItemAction),
-}
-
 pub struct PieMenuItemComponent {
     center_x: f32,
     center_y: f32,
@@ -80,7 +75,6 @@ pub struct PieMenuItemComponent {
     end_angle: f32,
     action: MenuItemAction,
     state_machine: StateMachine,
-    // callback: Box<dyn Fn(CallbackProps)>,
     icon_component: Option<SpriteComponent>,
     icon_size: ExponentialSmoothing,
     time_delta: TimeDelta,
@@ -120,7 +114,6 @@ impl Component for PieMenuItemComponent {
         let in_angle = self.start_angle <= input.angle && input.angle <= self.end_angle;
         let hover_self = in_angle && input.magnitude > 0.5;
         let clicking = input.click > 0.5 && input.magnitude > 0.5;
-        let clicking_self = clicking && in_angle;
 
         self.state_machine.update(clicking, hover_self);
 
@@ -181,53 +174,6 @@ impl Component for PieMenuItemComponent {
     }
     fn render(&self, pixmap: &mut Pixmap) {
         let transform = Transform::from_translate(self.center_x, self.center_y);
-
-        // Highlight
-        {
-            let path = {
-                let mut pb = tiny_skia::PathBuilder::new();
-                pb.move_to(0.0, 0.0);
-                pb.line_to(
-                    self.end_angle.cos() * self.radius,
-                    self.end_angle.sin() * self.radius,
-                );
-                pb.line_to(
-                    lerp(self.end_angle, self.start_angle, 0.25).cos() * self.radius,
-                    lerp(self.end_angle, self.start_angle, 0.25).sin() * self.radius,
-                );
-
-                pb.line_to(
-                    lerp(self.end_angle, self.start_angle, 0.5).cos() * self.radius,
-                    lerp(self.end_angle, self.start_angle, 0.5).sin() * self.radius,
-                );
-                pb.line_to(
-                    lerp(self.end_angle, self.start_angle, 0.75).cos() * self.radius,
-                    lerp(self.end_angle, self.start_angle, 0.75).sin() * self.radius,
-                );
-                pb.line_to(
-                    self.start_angle.cos() * self.radius,
-                    self.start_angle.sin() * self.radius,
-                );
-                pb.line_to(0.0, 0.0);
-
-                pb.finish().unwrap()
-            };
-
-            let paint = default_paint();
-
-            // Draw the highlight
-            /*match self.highlight {
-                Highlight::Soft => {
-                    paint.set_color_rgba8(255, 255, 0, 128);
-                    pixmap.fill_path(&path, &paint, FillRule::EvenOdd, transform, None);
-                }
-                Highlight::Hard => {
-                    paint.set_color_rgba8(255, 255, 0, 255);
-                    pixmap.fill_path(&path, &paint, FillRule::EvenOdd, transform, None);
-                }
-                _ => {}
-            }*/
-        }
 
         // Separate line
         {
@@ -379,7 +325,7 @@ mod stories {
         story::story,
     };
 
-    use super::{CallbackProps, MenuId, MenuItemAction, PieMenuItemComponent, Pixmap, Props};
+    use super::{MenuId, MenuItemAction, PieMenuItemComponent, Pixmap, Props};
     use std::{cell::RefCell, f32::consts::PI, path::PathBuf, rc::Rc};
 
     static NEUTRAL_ANGLE: f32 = 0.0;
@@ -410,8 +356,6 @@ mod stories {
     }
 
     fn pie_menu_item(callback_variable: Rc<RefCell<u32>>) -> PieMenuItemComponent {
-        let action = MenuItemAction::Noop;
-
         let action = MenuItemAction::OneShotButton(Rc::new(RefCell::new(CountAction::new(
             callback_variable.clone(),
         ))));
