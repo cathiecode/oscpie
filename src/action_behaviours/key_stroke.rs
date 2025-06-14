@@ -53,7 +53,7 @@ impl MenuActionBehaviour<()> for KeyStrokeButtonAction {
     }
 }
 
-fn send_keystroke(key_stroke: &KeyStroke) -> Result<()>{
+fn send_keystroke(key_stroke: &KeyStroke) -> Result<()> {
     let mut input: Vec<windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT> = Vec::new();
 
     for key_action in &key_stroke.0 {
@@ -103,7 +103,9 @@ fn send_input(input: &[windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT]) 
         windows_sys::Win32::UI::Input::KeyboardAndMouse::SendInput(
             u32::try_from(input.len())?,
             input.as_ptr(),
-            i32::try_from(std::mem::size_of::<windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT>())?,
+            i32::try_from(std::mem::size_of::<
+                windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT,
+            >())?,
         )
     };
 
@@ -111,7 +113,6 @@ fn send_input(input: &[windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT]) 
 
     if (result as usize) != input.len() {
         return Err(anyhow!("SendInput failed: {}", get_last_error()));
-        
     }
 
     Ok(())

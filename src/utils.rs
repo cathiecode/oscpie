@@ -79,7 +79,7 @@ impl IntervalTimer {
             last_time: std::time::Instant::now(),
         }
     }
-    
+
     #[allow(clippy::cast_precision_loss)]
     pub fn update(&mut self) -> bool {
         let now = std::time::Instant::now();
