@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
 
-use crate::config;
+use crate::{action_behaviours::key_stroke::KeyStrokeButtonAction, config};
 
 #[derive(Debug, Clone)]
 pub enum AppEvent {
@@ -72,6 +72,11 @@ impl MenuItemAction {
                     AppEvent::PushStack(MenuId::from_config(to)),
                 ))),
             ),
+            config::types::MenuItemAction::KeyStroke { key_stroke } => {
+                MenuItemAction::OneShotButton(Rc::new(RefCell::new(KeyStrokeButtonAction::new(
+                    key_stroke.clone().into(),
+                ))))
+            }
         }
     }
 }

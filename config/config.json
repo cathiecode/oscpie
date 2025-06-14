@@ -7,8 +7,17 @@
                 "items": [
                     {
                         "action": {
-                            "type": "SubMenu",
-                            "to": "submenu1"
+                            "type": "KeyStroke",
+                            "key_stroke": [
+                                {
+                                    "type": "Down",
+                                    "key": 57435
+                                },
+                                {
+                                    "type": "Up",
+                                    "key": 57435
+                                }
+                            ]
                         },
                         "icon": "2"
                     },

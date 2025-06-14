@@ -1,4 +1,3 @@
-
 use crate::prelude::*;
 use crate::{component::Component, debug::rt_debug};
 use tiny_skia::{Pixmap, Transform};
