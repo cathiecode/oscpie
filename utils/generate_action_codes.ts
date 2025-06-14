@@ -113,22 +113,6 @@ const inputActionFunction = (actionName: string, actionType: ActionType) => {
     );
 };
 
-const initFunction = (
-    actionManifest: z.infer<typeof types.ActionManifestSchema>,
-) => {
-    return "";
-    const actionSets = actionManifest.action_sets.map((actionSet) => `
-        // Action Set: ${actionSet.name}
-        self.action_sets
-    `).join("\n");
-
-    return `
-    pub fn init(&mut self) -> Self {
-        ${actionSets}
-    }
-    `;
-};
-
 const inputActionFunctions = (
     actionManifest: z.infer<typeof types.ActionManifestSchema>,
 ) => {
@@ -241,7 +225,6 @@ const generatedFields = (
 const code = (actionManifest: z.infer<typeof types.ActionManifestSchema>) => {
     return `
         impl Input {
-            ${initFunction(actionManifest)}
             ${fieldGenerationFunction(actionManifest)}
             ${inputActionFunctions(actionManifest)}
             ${activationFunctions(actionManifest)}
