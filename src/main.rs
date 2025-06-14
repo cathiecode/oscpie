@@ -93,7 +93,7 @@ impl AppImpl {
             if self.menu_stack.len() > 1 {
                 let back_action = self.app_action(AppEvent::PopStack);
 
-                let back_item = MenuItem::new(back_action, Some("1".to_string()));
+                let back_item = MenuItem::new(back_action, Some("back".to_string()));
                 menu.items.insert(0, back_item);
             }
 

@@ -2,7 +2,7 @@
     "image": "spritesheet_image.png",
     "sprites": {
         "1": {
-            "name": "1",
+            "name": "back",
             "width": 64,
             "height": 64,
             "x_start": 0,
