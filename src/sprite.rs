@@ -49,15 +49,9 @@ impl SpriteSheet {
     }
 
     pub fn cutout(&self, name: &str) -> Option<Pixmap> {
-        let Some(sprite) = self.meta.sprites.get(name) else {
-            return None;
-        };
+        let sprite = self.meta.sprites.get(name)?;
 
-        let Some(rect) =
-            IntRect::from_xywh(sprite.x_start, sprite.y_start, sprite.width, sprite.height)
-        else {
-            return None;
-        };
+        let rect = IntRect::from_xywh(sprite.x_start, sprite.y_start, sprite.width, sprite.height)?;
 
         self.pixmap.clone_rect(rect)
     }
