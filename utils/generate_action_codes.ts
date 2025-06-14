@@ -108,7 +108,9 @@ const inputActionFunction = (actionName: string, actionType: ActionType) => {
         throw new Error(`Invalid action type: ${actionType}`);
     }
 
-    return inputActionFunctionByType[actionType](canonicalizedActionName(actionName));
+    return inputActionFunctionByType[actionType](
+        canonicalizedActionName(actionName),
+    );
 };
 
 const initFunction = (
@@ -199,7 +201,7 @@ const fieldGenerationFunction = (
     ).join("\n");
 
     return `
-        pub fn generate_fields(sys: &sys::VR_IVRInput_FnTable) -> Result<GeneratedFields> {
+        fn generate_fields(sys: &sys::VR_IVRInput_FnTable) -> Result<GeneratedFields> {
             ${actionDeclarations}
             ${actionSetDeclarations}
 

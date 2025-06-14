@@ -52,7 +52,7 @@ pub struct Input {
 }
 
 impl Input {
-    pub fn new(sys: CastRc<sys::VR_IVRInput_FnTable>) -> Result<Self> {
+    pub(in crate::openvr) fn new(sys: CastRc<sys::VR_IVRInput_FnTable>) -> Result<Self> {
         let input = Input {
             active_action_sets: vec![],
             generated_fields: Self::generate_fields(sys.get())?,
