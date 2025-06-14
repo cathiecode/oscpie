@@ -24,8 +24,16 @@ pub type KeyStroke = Vec<KeyAction>;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum MenuItemAction {
-    SubMenu { to: MenuId },
-    KeyStroke { key_stroke: KeyStroke },
+    SubMenu {
+        to: MenuId,
+    },
+    KeyStroke {
+        key_stroke: KeyStroke,
+    },
+    Exec {
+        program_path: String,
+        args: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

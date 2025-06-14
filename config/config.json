@@ -11,15 +11,23 @@
                             "key_stroke": [
                                 {
                                     "type": "Down",
-                                    "key": 57435
+                                    "key": 30
                                 },
                                 {
                                     "type": "Up",
-                                    "key": 57435
+                                    "key": 30
                                 }
                             ]
                         },
                         "icon": "2"
+                    },
+                    {
+                        "action": {
+                            "type": "Exec",
+                            "program_path": "notepad.exe",
+                            "args": ["THIRDPARTY.md"]
+                        },
+                        "icon": "5"
                     },
                     {
                         "action": {
@@ -34,13 +42,6 @@
                             "to": "submenu1"
                         },
                         "icon": "4"
-                    },
-                    {
-                        "action": {
-                            "type": "SubMenu",
-                            "to": "submenu1"
-                        },
-                        "icon": "5"
                     }
                 ]
             },
