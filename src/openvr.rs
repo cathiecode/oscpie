@@ -90,13 +90,13 @@ struct CastRc<T>
 where
     T: 'static,
 {
-    _rc: Rc<OpenVr>,
+    rc: Rc<OpenVr>,
     value: &'static T,
 }
 
 impl<T> CastRc<T> {
-    unsafe fn new(_rc: Rc<OpenVr>, value: &'static T) -> Self {
-        CastRc { _rc, value }
+    unsafe fn new(rc: Rc<OpenVr>, value: &'static T) -> Self {
+        CastRc { rc, value }
     }
 
     fn get(&self) -> &T {
