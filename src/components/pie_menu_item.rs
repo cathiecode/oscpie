@@ -1,6 +1,7 @@
-use crate::{component::Component, debug::rt_debug};
+
 use crate::prelude::*;
-use tiny_skia::{FillRule, Pixmap, Transform};
+use crate::{component::Component, debug::rt_debug};
+use tiny_skia::{Pixmap, Transform};
 
 use super::sprite::{self, SpriteComponent};
 
@@ -21,60 +22,48 @@ pub enum StateMachine {
     Pressing,
     PressingStartedButOutOfBounds,
     PressingStartedInOutOfBounds,
-    Clicked
+    Clicked,
 }
 
 impl StateMachine {
     pub fn update(&mut self, is_down: bool, is_hovering_self: bool) {
         *self = match self {
-            StateMachine::Neutral => {
-                match (is_down, is_hovering_self) {
-                    (false, false) => StateMachine::Neutral,
-                    (false, true) => StateMachine::Hovering,
-                    (true, false) => StateMachine::PressingStartedInOutOfBounds,
-                    (true, true) => StateMachine::Pressing,
-                }
+            StateMachine::Neutral => match (is_down, is_hovering_self) {
+                (false, false) => StateMachine::Neutral,
+                (false, true) => StateMachine::Hovering,
+                (true, false) => StateMachine::PressingStartedInOutOfBounds,
+                (true, true) => StateMachine::Pressing,
             },
-            StateMachine::Hovering => {
-                match (is_down, is_hovering_self) {
-                    (false, false) => StateMachine::Neutral,
-                    (false, true) => StateMachine::Hovering,
-                    (true, false) => StateMachine::PressingStartedInOutOfBounds,
-                    (true, true) => StateMachine::Pressing,
-                }
+            StateMachine::Hovering => match (is_down, is_hovering_self) {
+                (false, false) => StateMachine::Neutral,
+                (false, true) => StateMachine::Hovering,
+                (true, false) => StateMachine::PressingStartedInOutOfBounds,
+                (true, true) => StateMachine::Pressing,
             },
-            StateMachine::Pressing => {
-                match (is_down, is_hovering_self) {
-                    (false, false) => StateMachine::Neutral,
-                    (false, true) => StateMachine::Clicked,
-                    (true, false) => StateMachine::PressingStartedButOutOfBounds,
-                    (true, true) => StateMachine::Pressing,
-                }
+            StateMachine::Pressing => match (is_down, is_hovering_self) {
+                (false, false) => StateMachine::Neutral,
+                (false, true) => StateMachine::Clicked,
+                (true, false) => StateMachine::PressingStartedButOutOfBounds,
+                (true, true) => StateMachine::Pressing,
             },
-            StateMachine::Clicked => {
-                match (is_down, is_hovering_self) {
-                    (false, false) => StateMachine::Neutral,
-                    (false, true) => StateMachine::Hovering,
-                    (true, false) => StateMachine::PressingStartedInOutOfBounds,
-                    (true, true) => StateMachine::Pressing,
-                }
-            }
-            StateMachine::PressingStartedButOutOfBounds => {
-                match (is_down, is_hovering_self) {
-                    (false, false) => StateMachine::Neutral,
-                    (false, true) => StateMachine::Hovering,
-                    (true, false) => StateMachine::PressingStartedButOutOfBounds,
-                    (true, true) => StateMachine::Pressing,
-                }
-            }
-            StateMachine::PressingStartedInOutOfBounds => {
-                match (is_down, is_hovering_self) {
-                    (false, false) => StateMachine::Neutral,
-                    (false, true) => StateMachine::Hovering,
-                    (true, false) => StateMachine::PressingStartedInOutOfBounds,
-                    (true, true) => StateMachine::PressingStartedInOutOfBounds,
-                }
-            }
+            StateMachine::Clicked => match (is_down, is_hovering_self) {
+                (false, false) => StateMachine::Neutral,
+                (false, true) => StateMachine::Hovering,
+                (true, false) => StateMachine::PressingStartedInOutOfBounds,
+                (true, true) => StateMachine::Pressing,
+            },
+            StateMachine::PressingStartedButOutOfBounds => match (is_down, is_hovering_self) {
+                (false, false) => StateMachine::Neutral,
+                (false, true) => StateMachine::Hovering,
+                (true, false) => StateMachine::PressingStartedButOutOfBounds,
+                (true, true) => StateMachine::Pressing,
+            },
+            StateMachine::PressingStartedInOutOfBounds => match (is_down, is_hovering_self) {
+                (false, false) => StateMachine::Neutral,
+                (false, true) => StateMachine::Hovering,
+                (true, false) => StateMachine::PressingStartedInOutOfBounds,
+                (true, true) => StateMachine::PressingStartedInOutOfBounds,
+            },
         };
     }
 }
@@ -92,7 +81,7 @@ pub struct PieMenuItemComponent {
     end_angle: f32,
     action: MenuItemAction,
     state_machine: StateMachine,
-    callback: Box<dyn Fn(CallbackProps)>,
+    // callback: Box<dyn Fn(CallbackProps)>,
     icon_component: Option<SpriteComponent>,
     icon_size: ExponentialSmoothing,
     time_delta: TimeDelta,
@@ -106,7 +95,6 @@ impl PieMenuItemComponent {
         start_angle: f32,
         end_angle: f32,
         action: MenuItemAction,
-        callback: Box<dyn Fn(CallbackProps)>,
         icon: Option<Pixmap>,
     ) -> Self {
         Self {
@@ -116,7 +104,7 @@ impl PieMenuItemComponent {
             start_angle,
             end_angle,
             action,
-            callback,
+            // callback,
             state_machine: StateMachine::Neutral,
             icon_component: icon.map(SpriteComponent::new),
             icon_size: ExponentialSmoothing::new(0.0, 20.0),
@@ -137,22 +125,49 @@ impl Component for PieMenuItemComponent {
 
         self.state_machine.update(clicking, hover_self);
 
-        if self.state_machine == StateMachine::Clicked {
-            (self.callback)(CallbackProps::Action(self.action.clone()));
+        /*if self.state_machine == StateMachine::Clicked {
+            // (self.callback)(CallbackProps::Action(self.action.clone()));
+        }
+
+        match &self.action {
+            MenuItemAction::Noop => {}
+            MenuItemAction::Button(ref button_action) => {}
+        }*/
+
+        match &self.action {
+            MenuItemAction::Noop => {
+                // no op
+            }
+            MenuItemAction::OneShotButton(behaviour) => {
+                if self.state_machine == StateMachine::Clicked {
+                    behaviour.borrow_mut().on_change(());
+                }
+            }
+            MenuItemAction::Button(behaviour) => {
+                behaviour
+                    .borrow_mut()
+                    .on_change(self.state_machine == StateMachine::Pressing);
+            }
         }
 
         // rt_debug("50_PieMenuItem State", || format!("{:?}", self.state_machine));
 
-        rt_debug(|| (format!("50_PieMenuItem '{:?}' State", self.action), format!("{:?}", self.state_machine)));
+        rt_debug(|| {
+            (
+                format!("50_PieMenuItem '{:?}' State", self.action),
+                format!("{:?}", self.state_machine),
+            )
+        });
 
         let icon_size_target = match self.state_machine {
             StateMachine::Hovering => 1.2,
             StateMachine::Pressing => 0.8,
             StateMachine::Clicked => 1.2,
-            _ => 1.0
+            _ => 1.0,
         };
 
-        self.icon_size.update(icon_size_target, self.time_delta.update_and_get_secs());
+        self.icon_size
+            .update(icon_size_target, self.time_delta.update_and_get_secs());
 
         if let Some(icon_component) = &mut self.icon_component {
             let middle_angle = f32::midpoint(self.start_angle, self.end_angle);
@@ -199,7 +214,7 @@ impl Component for PieMenuItemComponent {
                 pb.finish().unwrap()
             };
 
-            let mut paint = default_paint();
+            let paint = default_paint();
 
             // Draw the highlight
             /*match self.highlight {
@@ -256,29 +271,35 @@ mod tests {
 
     use std::{cell::RefCell, f32::consts::PI, rc::Rc};
 
+    #[derive(Debug)]
+    struct CountAction {
+        count: Rc<RefCell<u32>>,
+    }
+
+    impl CountAction {
+        fn new(count: Rc<RefCell<u32>>) -> Self {
+            CountAction { count }
+        }
+    }
+
+    impl MenuActionBehaviour<()> for CountAction {
+        fn value(&self) {
+            ();
+        }
+
+        fn on_change(&mut self, _value: ()) {
+            *self.count.borrow_mut() += 1;
+        }
+    }
+
     fn pie_menu_item(callback_variable: Rc<RefCell<u32>>) -> PieMenuItemComponent {
         let start_angle = 0.0; // 0 degrees
         let end_angle = PI * 2.0 * 0.25; // 90 degrees
-        let action = MenuItemAction::PushStack {
-            to: MenuId::new("sub_menu".to_string()),
-        };
+        let action = MenuItemAction::OneShotButton(Rc::new(RefCell::new(CountAction::new(
+            callback_variable.clone(),
+        ))));
 
-        let callback = Box::new(move |props| match props {
-            CallbackProps::Action(_) => {
-                *callback_variable.borrow_mut() += 1;
-            }
-        });
-
-        PieMenuItemComponent::new(
-            0.0,
-            0.0,
-            0.0,
-            start_angle,
-            end_angle,
-            action,
-            callback,
-            None,
-        )
+        PieMenuItemComponent::new(0.0, 0.0, 0.0, start_angle, end_angle, action, None)
     }
 
     #[test]
@@ -354,7 +375,10 @@ mod stories {
     // NOTE: Allow unused_imports to import Component trait
     #![allow(unused_imports)]
     pub use crate::component::Component;
-    use crate::{story::story, types::PieMenuInput};
+    use crate::{
+        menu::{MenuActionBehaviour, PieMenuInput},
+        story::story,
+    };
 
     use super::{CallbackProps, MenuId, MenuItemAction, PieMenuItemComponent, Pixmap, Props};
     use std::{cell::RefCell, f32::consts::PI, path::PathBuf, rc::Rc};
@@ -365,16 +389,33 @@ mod stories {
     static END_ANGLE: f32 = PI * 2.0 * 0.25;
     static UNHOVER_ANGLE: f32 = PI * 2.0 * 0.5;
 
-    fn pie_menu_item(callback_variable: Rc<RefCell<u32>>) -> PieMenuItemComponent {
-        let action = MenuItemAction::PushStack {
-            to: MenuId::new("sub_menu".to_string()),
-        };
+    #[derive(Debug)]
+    struct CountAction {
+        count: Rc<RefCell<u32>>,
+    }
 
-        let callback = Box::new(move |props| match props {
-            CallbackProps::Action(_) => {
-                *callback_variable.borrow_mut() += 1;
-            }
-        });
+    impl CountAction {
+        fn new(count: Rc<RefCell<u32>>) -> Self {
+            CountAction { count }
+        }
+    }
+
+    impl MenuActionBehaviour<()> for CountAction {
+        fn value(&self) {
+            ();
+        }
+
+        fn on_change(&mut self, _value: ()) {
+            *self.count.borrow_mut() += 1;
+        }
+    }
+
+    fn pie_menu_item(callback_variable: Rc<RefCell<u32>>) -> PieMenuItemComponent {
+        let action = MenuItemAction::Noop;
+
+        let action = MenuItemAction::OneShotButton(Rc::new(RefCell::new(CountAction::new(
+            callback_variable.clone(),
+        ))));
 
         let mut icon = Pixmap::new(128, 128).unwrap();
         icon.fill(tiny_skia::Color::from_rgba8(255, 0, 0, 255));
@@ -386,7 +427,6 @@ mod stories {
             START_ANGLE,
             END_ANGLE,
             action,
-            callback,
             Some(icon),
         )
     }

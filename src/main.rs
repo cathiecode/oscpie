@@ -1,33 +1,27 @@
+mod action_behaviours;
 mod component;
 mod components;
 mod config;
 mod debug;
+mod menu;
 mod openvr;
 mod prelude;
 mod resource;
 mod sprite;
 mod story;
-mod types;
 mod utils;
 mod versioned;
 mod vulkan;
 
 use std::{cell::RefCell, collections::HashMap, f32::consts::PI, rc::Rc};
 
-use crate::{
-    debug::{debug_window, rt_debug},
-    prelude::*,
-};
+use crate::{debug::rt_debug, prelude::*};
 use anyhow::Result;
 use components::pie_menu;
 use config::Config;
 use resource::SPRITE_SHEET;
 use sprite::SpriteSheet;
 use tiny_skia::Pixmap;
-
-enum AppEvent {
-    MenuAction(MenuItemAction),
-}
 
 struct AppInput {
     angle: f32,
@@ -61,9 +55,9 @@ impl AppImpl {
 
         let mut menu_map = HashMap::new();
 
-        for (id, menu) in configuration.menus.iter() {
-            let menu: Menu = menu.clone().into();
-            menu_map.insert(id.clone().into(), menu);
+        for (id, menu) in &configuration.menus {
+            let menu: Menu = Menu::from_config(menu, received_events.clone());
+            menu_map.insert(MenuId::from_config(id), menu);
         }
 
         Ok(Self {
@@ -73,26 +67,22 @@ impl AppImpl {
             should_render: true,
             current_pie_menu_component: Self::create_pie_menu(
                 menu_map
-                    .get(&configuration.root.clone().into())
+                    .get(&MenuId::from_config(&configuration.root))
                     .unwrap()
                     .clone(),
-                Self::event_receiver_static(received_events.clone()),
             ),
             menu_map,
             received_events,
-            menu_stack: vec![configuration.root.clone().into()],
+            menu_stack: vec![MenuId::from_config(&configuration.root)],
         })
     }
 
-    fn create_pie_menu(
-        menu: Menu,
-        event_receiver: Rc<dyn Fn(pie_menu::CallbackProps)>,
-    ) -> pie_menu::PieMenuComponent {
+    fn create_pie_menu(menu: Menu) -> pie_menu::PieMenuComponent {
         let center_x = 256.0;
         let center_y = 256.0;
         let radius = 256.0 * 0.9;
 
-        pie_menu::PieMenuComponent::new(center_x, center_y, radius, menu, event_receiver)
+        pie_menu::PieMenuComponent::new(center_x, center_y, radius, menu)
     }
 
     fn replace_pie_menu(&mut self) {
@@ -105,7 +95,8 @@ impl AppImpl {
             let mut menu = menu.clone();
 
             if self.menu_stack.len() > 1 {
-                let back_action = MenuItemAction::PopStack;
+                let back_action = self.app_action(AppEvent::PopStack);
+
                 let back_item = MenuItem {
                     action: back_action,
                     icon: Some("1".to_string()), // TODO
@@ -113,29 +104,17 @@ impl AppImpl {
                 menu.items.insert(0, back_item);
             }
 
-            self.current_pie_menu_component = Self::create_pie_menu(
-                menu,
-                Self::event_receiver_static(self.received_events.clone()),
-            );
+            self.current_pie_menu_component = Self::create_pie_menu(menu);
         } else {
             log::error!("Menu with ID {menu_id:?} not found");
         }
     }
 
-    fn event_receiver(&mut self) -> Rc<dyn Fn(pie_menu::CallbackProps)> {
-        Self::event_receiver_static(self.received_events.clone())
-    }
-
-    fn event_receiver_static(
-        received_events: Rc<RefCell<Vec<AppEvent>>>,
-    ) -> Rc<dyn Fn(pie_menu::CallbackProps)> {
-        Rc::new(move |action: pie_menu::CallbackProps| match action {
-            pie_menu::CallbackProps::Action(action) => {
-                received_events
-                    .borrow_mut()
-                    .push(AppEvent::MenuAction(action));
-            }
-        })
+    fn app_action(&mut self, app_event: AppEvent) -> MenuItemAction {
+        MenuItemAction::OneShotButton(Rc::new(RefCell::new(AppEventMenuActionBehaviour::new(
+            self.received_events.clone(),
+            app_event,
+        ))))
     }
 }
 
@@ -157,25 +136,22 @@ impl App for AppImpl {
 
             for event in recived_events.iter() {
                 match event {
-                    AppEvent::MenuAction(action) => match action {
-                        MenuItemAction::Noop => {}
-                        MenuItemAction::PopStack => {
-                            if self.menu_stack.len() > 1 {
-                                self.menu_stack.pop();
-                                should_replace_menu = true;
-                            } else {
-                                log::warn!("Attempted to pop the root menu, ignoring.");
-                            }
-                        }
-                        MenuItemAction::PushStack { to } => {
-                            self.menu_stack.push(to.clone());
+                    AppEvent::PopStack => {
+                        if self.menu_stack.len() > 1 {
+                            self.menu_stack.pop();
                             should_replace_menu = true;
+                        } else {
+                            log::warn!("Attempted to pop the root menu, ignoring.");
                         }
-                    },
+                    }
+                    AppEvent::PushStack(to) => {
+                        self.menu_stack.push(to.clone());
+                        should_replace_menu = true;
+                    }
                 }
             }
 
-            if recived_events.len() > 0 {
+            if !recived_events.is_empty() {
                 recived_events.clear();
             }
         }
@@ -262,7 +238,7 @@ fn app() -> Result<()> {
                 .unwrap()
                 .as_secs_f32();
 
-            let angle = ((time_as_seconds * PI * 2.0 * 0.1) % (PI * 2.0));
+            let angle = (time_as_seconds * PI * 2.0 * 0.1) % (PI * 2.0);
             let magnitude = f32::midpoint((time_as_seconds * PI * 2.0 * 1.0).cos(), 1.0);
 
             AppInput {
@@ -286,14 +262,14 @@ fn app() -> Result<()> {
 
             rt_debug(|| {
                 (
-                    format!("20_click"),
+                    "20_click".to_string(),
                     format!("ClickLeft: {click_input:?}, SelectLeft: {select_input:?}"),
                 )
             });
 
             rt_debug(|| {
                 (
-                    format!("30_pose"),
+                    "30_pose".to_string(),
                     format!("PoseLeft: {:?}, Active: {}", pose.pose, pose.active),
                 )
             });
@@ -326,7 +302,7 @@ fn app() -> Result<()> {
         if interval_timer.update() {
             rt_debug(|| {
                 (
-                    format!("10_FPS"),
+                    "10_FPS".to_string(),
                     format!("whole process: {time_elapsed_ns}ns"),
                 )
             });

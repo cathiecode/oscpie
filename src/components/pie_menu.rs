@@ -1,4 +1,3 @@
-use std::rc::Rc;
 
 use tiny_skia::{Pixmap, Rect, Transform};
 
@@ -16,22 +15,17 @@ impl Props {
     }
 }
 
-pub enum CallbackProps {
-    Action(MenuItemAction),
-}
-
 pub struct PieMenuComponent {
     center_x: f32,
     center_y: f32,
     radius: f32,
     items: Vec<pie_menu_item::PieMenuItemComponent>,
-    callback: Rc<dyn Fn(CallbackProps)>,
     input_angle: f32,
     input_magnitude: f32,
 }
 
 impl PieMenuComponent {
-    pub fn new(center_x: f32, center_y: f32, radius: f32, menu: Menu, callback: Rc<dyn Fn(CallbackProps)>) -> Self {
+    pub fn new(center_x: f32, center_y: f32, radius: f32, menu: Menu) -> Self {
         let item_count = menu.items.len();
 
         let items = menu
@@ -42,8 +36,6 @@ impl PieMenuComponent {
                 let start_angle = (i as f32 / item_count as f32) * 2.0 * std::f32::consts::PI;
                 let end_angle = ((i + 1) as f32 / item_count as f32) * 2.0 * std::f32::consts::PI;
 
-                let callback = callback.clone();
-
                 pie_menu_item::PieMenuItemComponent::new(
                     center_x,
                     center_y,
@@ -51,15 +43,6 @@ impl PieMenuComponent {
                     start_angle,
                     end_angle,
                     item.action.clone(),
-                    Box::new(move |action| {
-                        // Handle the action here
-                        match action {
-                            pie_menu_item::CallbackProps::Action(action) => {
-                                // Handle pop stack action
-                                callback(CallbackProps::Action(action));
-                            }
-                        }
-                    }),
                     item.icon
                         .as_ref()
                         .map(|icon_sprite_id| get_sprite_sheet().cutout(icon_sprite_id).unwrap()), // FIXME: Not testable
@@ -72,7 +55,6 @@ impl PieMenuComponent {
             center_y,
             radius,
             items,
-            callback,
             input_angle: 0.0,
             input_magnitude: 0.0,
         }
@@ -185,7 +167,7 @@ mod stories {
             ],
         };
 
-        PieMenuComponent::new(center_x, center_y, radius, menu, Rc::new(|_| {}))
+        PieMenuComponent::new(center_x, center_y, radius, menu)
     }
 
     #[test]

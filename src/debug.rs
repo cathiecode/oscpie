@@ -1,8 +1,6 @@
-use crate::prelude::*;
 use std::{
     collections::BTreeMap,
-    fmt::Debug,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Mutex, OnceLock},
 };
 
 static MESSAGES: OnceLock<Mutex<BTreeMap<String, String>>> = OnceLock::new();
@@ -32,7 +30,7 @@ pub fn debug_window() {
                 .unwrap();
 
             messages.iter().for_each(|(id, message)| {
-                println!("{}: {}", id, message);
+                println!("{id}: {message}");
             });
         }
         std::thread::sleep(std::time::Duration::from_millis(100));

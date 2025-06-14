@@ -110,12 +110,7 @@ pub fn resolve_path(base: &str, target: &str) -> PathBuf {
     path.join(PathBuf::from(target))
 }
 
-pub fn exponential_smoothing(
-    current: f32,
-    target: f32,
-    speed: f32,
-    dt: f32,
-) -> f32 {
+pub fn exponential_smoothing(current: f32, target: f32, speed: f32, dt: f32) -> f32 {
     current + (target - current) * (1.0 - (-speed * dt).exp())
 }
 
@@ -126,10 +121,7 @@ pub struct ExponentialSmoothing {
 
 impl ExponentialSmoothing {
     pub fn new(current: f32, speed: f32) -> Self {
-        Self {
-            current,
-            speed,
-        }
+        Self { current, speed }
     }
 
     pub fn get_current(&self) -> f32 {
@@ -175,12 +167,15 @@ enum ClickStateMachineEvent {
 
 pub struct ClickStateMachine {
     is_down_in_last_update: bool,
-    clicked: bool
+    clicked: bool,
 }
 
 impl ClickStateMachine {
     pub fn new() -> Self {
-        Self { is_down_in_last_update: false, clicked: false}
+        Self {
+            is_down_in_last_update: false,
+            clicked: false,
+        }
     }
 
     pub fn update(&mut self, is_down: bool) -> Option<ClickStateMachineEvent> {
@@ -195,6 +190,6 @@ impl ClickStateMachine {
 
         self.is_down_in_last_update = is_down;
 
-        return result;
+        result
     }
 }
