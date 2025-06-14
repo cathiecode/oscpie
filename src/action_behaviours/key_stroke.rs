@@ -1,8 +1,10 @@
+use crate::prelude::*;
+
 use windows_sys::Win32::System::Diagnostics::Debug::{
     FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_FROM_SYSTEM,
 };
 
-use crate::{config, prelude::*};
+use crate::config;
 
 type ScanCode = u16;
 
@@ -42,23 +44,25 @@ impl KeyStrokeButtonAction {
 }
 
 impl MenuActionBehaviour<()> for KeyStrokeButtonAction {
-    fn value(&self) {
-        ();
-    }
+    fn value(&self) {}
 
     fn on_change(&mut self, _value: ()) {
-        send_keystroke(&self.key_stroke);
+        if let Err(err) = send_keystroke(&self.key_stroke) {
+            log::error!("Failed to send keystroke: {err}");
+        }
     }
 }
 
-fn send_keystroke(key_stroke: &KeyStroke) {
+fn send_keystroke(key_stroke: &KeyStroke) -> Result<()>{
     let mut input: Vec<windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT> = Vec::new();
 
     for key_action in &key_stroke.0 {
         input.push(key_action_to_input(key_action));
     }
 
-    send_input(input);
+    send_input(&input)?;
+
+    Ok(())
 }
 
 fn key_action_to_input(
@@ -94,20 +98,23 @@ fn key_action_to_input(
     input
 }
 
-fn send_input(input: Vec<windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT>) {
+fn send_input(input: &[windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT]) -> Result<()> {
     let result = unsafe {
         windows_sys::Win32::UI::Input::KeyboardAndMouse::SendInput(
-            input.len() as u32,
+            u32::try_from(input.len())?,
             input.as_ptr(),
-            std::mem::size_of::<windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT>() as i32,
+            i32::try_from(std::mem::size_of::<windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT>())?,
         )
     };
 
     log::info!("SendInput result: {result}");
 
-    if result != input.len() as u32 {
-        log::error!("SendInput failed: {}", get_last_error());
+    if (result as usize) != input.len() {
+        return Err(anyhow!("SendInput failed: {}", get_last_error()));
+        
     }
+
+    Ok(())
 }
 
 fn get_last_error() -> String {
