@@ -1,4 +1,4 @@
-import { buildVRChatCliCommand } from "./packages/vrchat-api/build.ts";
+import { buildVRChatCliCommand } from "./packages/vrchatcli/build.ts";
 
 async function main() {
   try {
