@@ -30,12 +30,8 @@ struct AppInput {
 }
 
 trait App {
-    fn on_update(&mut self, input: AppInput) -> Result<()> {
-        Ok(())
-    }
-    fn on_render(&mut self, _: &mut Pixmap) -> Result<()> {
-        Ok(())
-    }
+    fn on_update(&mut self, _input: AppInput) -> Result<()>;
+    fn on_render(&mut self, _: &mut Pixmap) -> Result<()>;
 }
 
 struct AppImpl {
