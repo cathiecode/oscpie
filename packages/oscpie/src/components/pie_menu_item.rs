@@ -1,4 +1,3 @@
-
 use crate::prelude::*;
 use crate::resource::get_sprite_sheet;
 use crate::{component::Component, debug::rt_debug};
