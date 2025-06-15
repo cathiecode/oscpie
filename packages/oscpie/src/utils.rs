@@ -202,9 +202,8 @@ mod tests {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum ClickStateMachineEvent {
+pub enum ClickStateMachineEvent {
     Down,
-    Up,
     Pressing,
     Click,
 }
@@ -227,7 +226,7 @@ impl ClickStateMachine {
 
         let result = match (self.is_down_in_last_update, is_down) {
             (false, true) => Some(ClickStateMachineEvent::Down),
-            (true, false) => Some(ClickStateMachineEvent::Up),
+            (true, false) => Some(ClickStateMachineEvent::Click),
             (true, true) => Some(ClickStateMachineEvent::Pressing),
             (false, false) => None,
         };

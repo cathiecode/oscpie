@@ -27,6 +27,7 @@ struct AppInput {
     angle: f32,
     magnitude: f32,
     click: f32,
+    open_menu: bool,
 }
 
 trait App {
@@ -43,6 +44,8 @@ struct AppImpl {
     menu_map: HashMap<MenuId, Menu>,
     received_events: Rc<RefCell<Vec<AppEvent>>>,
     menu_stack: Vec<MenuId>,
+    is_open: bool,
+    open_menu_state_machine: ClickStateMachine,
 }
 
 impl AppImpl {
@@ -70,6 +73,8 @@ impl AppImpl {
             menu_map,
             received_events,
             menu_stack: vec![MenuId::from_config(&configuration.root)],
+            is_open: false,
+            open_menu_state_machine: ClickStateMachine::new(),
         }
     }
 
@@ -120,7 +125,19 @@ impl App for AppImpl {
             angle,
             magnitude,
             click,
+            open_menu,
         } = input;
+
+        let open_menu_state_machine_event = self.open_menu_state_machine.update(open_menu);
+
+        if let Some(ClickStateMachineEvent::Click) = open_menu_state_machine_event {
+            self.is_open = !self.is_open;
+        }
+
+        // Cull if the menu is not open
+        if !self.is_open {
+            return Ok(());
+        }
 
         let mut should_replace_menu = false;
 
@@ -174,6 +191,10 @@ impl App for AppImpl {
 
     fn on_render(&mut self, pixmap: &mut Pixmap) -> Result<()> {
         let timing_check = TimingCheck::new();
+
+        if !self.is_open {
+            return Ok(());
+        }
 
         pixmap.fill(tiny_skia::Color::from_rgba(0.0, 0.0, 0.0, 0.0).unwrap());
         if self.should_render {
@@ -237,11 +258,13 @@ fn app() -> Result<()> {
                 angle,
                 magnitude,
                 click: 0.0,
+                open_menu: false,
             }
         } else {
             input.update()?;
             let click_input = input.get_actions_main_in_ClickLeft()?;
             let select_input = input.get_actions_main_in_SelectLeft()?;
+            let open_menu_input = input.get_actions_main_in_OpenLeft()?;
             let pose = input
                 .get_actions_main_in_PoseLeft(openvr::TrackingUniverseOrigin::RawAndUncalibrated)?;
 
@@ -272,6 +295,7 @@ fn app() -> Result<()> {
                     .rem_euclid(PI * 2.0),
                 magnitude: select_input.value.length(),
                 click: if click_input.state { 1.0 } else { 0.0 },
+                open_menu: open_menu_input.state,
             }
         };
 
@@ -298,6 +322,12 @@ fn app() -> Result<()> {
                     format!("whole process: {time_elapsed_ns}ns"),
                 )
             });
+        }
+
+        if app.is_open {
+            overlay.show()?;
+        } else {
+            overlay.hide()?;
         }
 
         overlay.wait_frame_sync(100)?;
