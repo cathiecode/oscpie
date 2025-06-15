@@ -49,13 +49,13 @@ struct AppImpl {
 }
 
 impl AppImpl {
-    fn new(configuration: Config) -> AppImpl {
+    fn new(configuration: &Config) -> AppImpl {
         let received_events = Rc::new(RefCell::new(Vec::new()));
 
         let mut menu_map = HashMap::new();
 
         for (id, menu) in &configuration.menus {
-            let menu: Menu = Menu::from_config(menu, received_events.clone());
+            let menu: Menu = Menu::from_config(menu, &received_events);
             menu_map.insert(MenuId::from_config(id), menu);
         }
 
@@ -67,8 +67,7 @@ impl AppImpl {
             current_pie_menu_component: Self::create_pie_menu(
                 menu_map
                     .get(&MenuId::from_config(&configuration.root))
-                    .unwrap()
-                    .clone(),
+                    .unwrap(),
             ),
             menu_map,
             received_events,
@@ -78,7 +77,7 @@ impl AppImpl {
         }
     }
 
-    fn create_pie_menu(menu: Menu) -> pie_menu::PieMenuComponent {
+    fn create_pie_menu(menu: &Menu) -> pie_menu::PieMenuComponent {
         let center_x = 256.0;
         let center_y = 256.0;
         let radius = 256.0 * 0.9;
@@ -102,7 +101,7 @@ impl AppImpl {
                 menu.items.insert(0, back_item);
             }
 
-            self.current_pie_menu_component = Self::create_pie_menu(menu);
+            self.current_pie_menu_component = Self::create_pie_menu(&menu);
         } else {
             log::error!("Menu with ID {menu_id:?} not found");
         }
@@ -220,7 +219,7 @@ fn app() -> Result<()> {
         .set(SpriteSheet::load(resolve_path("config/config.json", &config.sprite_sheet)).unwrap())
         .unwrap();
 
-    let mut app = AppImpl::new(config);
+    let mut app = AppImpl::new(&config);
 
     let openvr = openvr::Handle::<openvr::OpenVr>::new(openvr::EVRApplicationType::Overlay)?;
     let overlay_interface = openvr.overlay()?;

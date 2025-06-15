@@ -46,7 +46,7 @@ pub struct MenuId(String);
 
 impl MenuId {
     pub fn new(id: String) -> Self {
-        MenuId(id.to_string())
+        MenuId(id)
     }
 }
 
@@ -132,7 +132,7 @@ impl Menu {
 
     pub fn from_config(
         menu: &config::types::Menu,
-        app_received_events: Rc<RefCell<Vec<AppEvent>>>,
+        app_received_events: &Rc<RefCell<Vec<AppEvent>>>,
     ) -> Self {
         Menu {
             items: menu

@@ -284,7 +284,7 @@ mod tests {
         let start_angle = 0.0; // 0 degrees
         let end_angle = PI * 2.0 * 0.25; // 90 degrees
         let action = MenuItemAction::OneShotButton(Rc::new(RefCell::new(CountAction::new(
-            callback_variable.clone(),
+            callback_variable,
         ))));
 
         PieMenuItemComponent::new(0.0, 0.0, 0.0, start_angle, end_angle, action, None)
@@ -401,7 +401,7 @@ mod stories {
 
     fn pie_menu_item(callback_variable: Rc<RefCell<u32>>) -> PieMenuItemComponent {
         let action = MenuItemAction::OneShotButton(Rc::new(RefCell::new(CountAction::new(
-            callback_variable.clone(),
+            callback_variable,
         ))));
 
         let mut icon = Pixmap::new(128, 128).unwrap();

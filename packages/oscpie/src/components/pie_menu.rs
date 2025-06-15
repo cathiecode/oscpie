@@ -24,7 +24,7 @@ pub struct PieMenuComponent {
 }
 
 impl PieMenuComponent {
-    pub fn new(center_x: f32, center_y: f32, radius: f32, menu: Menu) -> Self {
+    pub fn new(center_x: f32, center_y: f32, radius: f32, menu: &Menu) -> Self {
         let item_count = menu.items.len();
 
         let items = menu
@@ -158,7 +158,7 @@ mod stories {
             ],
         };
 
-        PieMenuComponent::new(center_x, center_y, radius, menu)
+        PieMenuComponent::new(center_x, center_y, radius, &menu)
     }
 
     #[test]
