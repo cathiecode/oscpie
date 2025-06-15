@@ -1,62 +1,6 @@
 {
     "bindings": {
         "/actions/main": {
-            "sources": [
-                {
-                    "inputs": {
-                        "position": {
-                            "output": "/actions/main/in/SelectLeft"
-                        }
-                    },
-                    "mode": "joystick",
-                    "path": "/user/hand/left/input/thumbstick"
-                },
-                {
-                    "inputs": {
-                        "position": {
-                            "output": "/actions/main/in/SelectRight"
-                        }
-                    },
-                    "mode": "joystick",
-                    "path": "/user/hand/right/input/thumbstick"
-                },
-                {
-                    "inputs": {
-                        "pull": {
-                            "output": "/actions/main/in/OpenLeft"
-                        }
-                    },
-                    "mode": "trigger",
-                    "path": "/user/hand/left/input/trigger"
-                },
-                {
-                    "inputs": {
-                        "pull": {
-                            "output": "/actions/main/in/OpenRight"
-                        }
-                    },
-                    "mode": "trigger",
-                    "path": "/user/hand/right/input/trigger"
-                },
-                {
-                    "inputs": {
-                        "click": {
-                            "output": "/actions/main/in/ClickLeft"
-                        }
-                    },
-                    "mode": "button",
-                    "path": "/user/hand/left/input/a"
-                },
-                {
-                    "inputs": {
-                        "click": {
-                            "output": "/actions/main/in/ClickRight"
-                        }
-                    },
-                    "mode": "button",
-                    "path": "/user/hand/right/input/a"
-                }
-            ],
             "poses": [
                 {
                     "output": "/actions/main/in/PoseLeft",
@@ -65,6 +9,68 @@
                 {
                     "output": "/actions/main/in/PoseRight",
                     "path": "/user/hand/right/input/pose"
+                }
+            ],
+            "sources": [
+                {
+                    "path": "/user/hand/left/input/thumbstick",
+                    "mode": "joystick",
+                    "inputs": {
+                        "position": {
+                            "output": "/actions/main/in/SelectLeft"
+                        }
+                    }
+                },
+                {
+                    "path": "/user/hand/right/input/thumbstick",
+                    "mode": "joystick",
+                    "inputs": {
+                        "position": {
+                            "output": "/actions/main/in/SelectRight"
+                        }
+                    }
+                },
+                {
+                    "path": "/user/hand/left/input/a",
+                    "mode": "button",
+                    "inputs": {
+                        "pull": {
+                            "output": "/actions/main/in/OpenLeft"
+                        },
+                        "click": {
+                            "output": "/actions/main/in/openleft"
+                        }
+                    }
+                },
+                {
+                    "path": "/user/hand/right/input/a",
+                    "mode": "button",
+                    "inputs": {
+                        "pull": {
+                            "output": "/actions/main/in/OpenRight"
+                        },
+                        "click": {
+                            "output": "/actions/main/in/openright"
+                        }
+                    }
+                },
+                {
+                    "path": "/user/hand/left/input/trigger",
+                    "mode": "button",
+                    "inputs": {
+                        "click": {
+                            "output": "/actions/main/in/ClickLeft"
+                        }
+                    }
+                },
+                {
+                    "path": "/user/hand/right/input/trigger",
+                    "mode": "button",
+                    "inputs": {
+                        "click": {
+                            "output": "/actions/main/in/ClickRight"
+                        }
+                    }
                 }
             ]
         }
