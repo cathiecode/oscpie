@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc, sync::mpsc::Sender};
 
 use crate::{
     action_behaviours::{exec::ExecOneShotButtonAction, key_stroke::KeyStrokeButtonAction},
@@ -13,14 +13,14 @@ pub enum AppEvent {
 
 #[derive(Debug)]
 pub struct AppEventMenuActionBehaviour {
-    received_events: Rc<RefCell<Vec<AppEvent>>>,
+    event_sender: Sender<AppEvent>,
     event: AppEvent,
 }
 
 impl AppEventMenuActionBehaviour {
-    pub fn new(received_events: Rc<RefCell<Vec<AppEvent>>>, event: AppEvent) -> Self {
+    pub fn new(event_sender: Sender<AppEvent>, event: AppEvent) -> Self {
         Self {
-            received_events,
+            event_sender,
             event,
         }
     }
@@ -32,7 +32,7 @@ impl MenuActionBehaviour<bool> for AppEventMenuActionBehaviour {
     }
 
     fn on_change(&mut self, _value: bool) {
-        self.received_events.borrow_mut().push(self.event.clone());
+        self.event_sender.send(self.event.clone());
     }
 }
 
@@ -66,12 +66,12 @@ pub enum MenuItemAction {
 impl MenuItemAction {
     pub fn from_config(
         action: &config::types::MenuItemAction,
-        app_received_events: Rc<RefCell<Vec<AppEvent>>>,
+        event_sender: Sender<AppEvent>,
     ) -> MenuItemAction {
         match action {
             config::types::MenuItemAction::SubMenu { to } => MenuItemAction::OneShotButton(
                 Rc::new(RefCell::new(AppEventMenuActionBehaviour::new(
-                    app_received_events,
+                    event_sender,
                     AppEvent::PushStack(MenuId::from_config(to)),
                 ))),
             ),
@@ -101,12 +101,9 @@ impl MenuItem {
         MenuItem { action, icon }
     }
 
-    pub fn from_config(
-        item: &config::types::MenuItem,
-        app_received_events: Rc<RefCell<Vec<AppEvent>>>,
-    ) -> Self {
+    pub fn from_config(item: &config::types::MenuItem, event_sender: Sender<AppEvent>) -> Self {
         MenuItem {
-            action: MenuItemAction::from_config(&item.action, app_received_events),
+            action: MenuItemAction::from_config(&item.action, event_sender),
             icon: item.icon.clone(),
         }
     }
@@ -130,15 +127,12 @@ impl Menu {
         Menu { items }
     }
 
-    pub fn from_config(
-        menu: &config::types::Menu,
-        app_received_events: &Rc<RefCell<Vec<AppEvent>>>,
-    ) -> Self {
+    pub fn from_config(menu: &config::types::Menu, event_sender: Sender<AppEvent>) -> Self {
         Menu {
             items: menu
                 .items
                 .iter()
-                .map(|item| MenuItem::from_config(item, app_received_events.clone()))
+                .map(|item| MenuItem::from_config(item, event_sender.clone()))
                 .collect(),
         }
     }

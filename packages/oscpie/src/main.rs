@@ -13,7 +13,13 @@ mod utils;
 mod versioned;
 mod vulkan;
 
-use std::{cell::RefCell, collections::HashMap, f32::consts::PI, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    f32::consts::PI,
+    rc::Rc,
+    sync::mpsc::{channel, Receiver, Sender},
+};
 
 use crate::{debug::rt_debug, prelude::*};
 use anyhow::Result;
@@ -42,7 +48,8 @@ struct AppImpl {
     should_render: bool,
     current_pie_menu_component: pie_menu::PieMenuComponent,
     menu_map: HashMap<MenuId, Menu>,
-    received_events: Rc<RefCell<Vec<AppEvent>>>,
+    event_sender: Sender<AppEvent>,
+    event_receiver: Receiver<AppEvent>,
     menu_stack: Vec<MenuId>,
     is_open: bool,
     open_menu_state_machine: ClickStateMachine,
@@ -50,12 +57,12 @@ struct AppImpl {
 
 impl AppImpl {
     fn new(configuration: &Config) -> AppImpl {
-        let received_events = Rc::new(RefCell::new(Vec::new()));
+        let (event_sender, event_receiver) = channel();
 
         let mut menu_map = HashMap::new();
 
         for (id, menu) in &configuration.menus {
-            let menu: Menu = Menu::from_config(menu, &received_events);
+            let menu: Menu = Menu::from_config(menu, event_sender.clone());
             menu_map.insert(MenuId::from_config(id), menu);
         }
 
@@ -70,7 +77,8 @@ impl AppImpl {
                     .unwrap(),
             ),
             menu_map,
-            received_events,
+            event_sender,
+            event_receiver,
             menu_stack: vec![MenuId::from_config(&configuration.root)],
             is_open: false,
             open_menu_state_machine: ClickStateMachine::new(),
@@ -109,7 +117,7 @@ impl AppImpl {
 
     fn app_action(&mut self, app_event: AppEvent) -> MenuItemAction {
         MenuItemAction::OneShotButton(Rc::new(RefCell::new(AppEventMenuActionBehaviour::new(
-            self.received_events.clone(),
+            self.event_sender.clone(),
             app_event,
         ))))
     }
@@ -140,28 +148,20 @@ impl App for AppImpl {
 
         let mut should_replace_menu = false;
 
-        {
-            let mut recived_events = self.received_events.borrow_mut();
-
-            for event in recived_events.iter() {
-                match event {
-                    AppEvent::PopStack => {
-                        if self.menu_stack.len() > 1 {
-                            self.menu_stack.pop();
-                            should_replace_menu = true;
-                        } else {
-                            log::warn!("Attempted to pop the root menu, ignoring.");
-                        }
-                    }
-                    AppEvent::PushStack(to) => {
-                        self.menu_stack.push(to.clone());
+        while let Ok(event) = self.event_receiver.try_recv() {
+            match event {
+                AppEvent::PopStack => {
+                    if self.menu_stack.len() > 1 {
+                        self.menu_stack.pop();
                         should_replace_menu = true;
+                    } else {
+                        log::warn!("Attempted to pop the root menu, ignoring.");
                     }
                 }
-            }
-
-            if !recived_events.is_empty() {
-                recived_events.clear();
+                AppEvent::PushStack(to) => {
+                    self.menu_stack.push(to.clone());
+                    should_replace_menu = true;
+                }
             }
         }
 
