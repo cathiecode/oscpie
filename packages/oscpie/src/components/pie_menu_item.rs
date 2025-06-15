@@ -105,7 +105,10 @@ impl PieMenuItemComponent {
             icon_component: icon.map(SpriteComponent::new),
             icon_size: ExponentialSmoothing::new(0.0, 20.0),
             time_delta: TimeDelta::new(),
-            spin_icon: SpriteComponent::new(get_sprite_sheet().cutout("spin").unwrap()),
+            spin_icon: SpriteComponent::new(
+                get_sprite_sheet()
+                    .map_or(Pixmap::new(1, 1).unwrap(), |ss| ss.cutout("spin").unwrap()),
+            ),
             spin_icon_size: ExponentialSmoothing::new(0.0, 10.0),
         }
     }
@@ -362,6 +365,7 @@ mod stories {
     pub use crate::component::Component;
     use crate::{
         menu::{MenuActionBehaviour, PieMenuInput},
+        resource::SPRITE_SHEET,
         story::story,
     };
 

@@ -42,8 +42,9 @@ impl PieMenuComponent {
                     start_angle,
                     end_angle,
                     item.action().clone(),
-                    item.icon()
-                        .map(|icon_sprite_id| get_sprite_sheet().cutout(icon_sprite_id).unwrap()), // FIXME: Not testable
+                    item.icon().map(|icon_sprite_id| {
+                        get_sprite_sheet().unwrap().cutout(icon_sprite_id).unwrap()
+                    }), // FIXME: Not testable
                 )
             })
             .collect();
