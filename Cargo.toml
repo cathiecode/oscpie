@@ -1,2 +1,2 @@
 [workspace]
-members = ["packages/oscpie"]
+members = [ "packages/inter_process_channel","packages/oscpie" ]

@@ -196,6 +196,7 @@ impl App for AppImpl {
         }
 
         pixmap.fill(tiny_skia::Color::from_rgba(0.0, 0.0, 0.0, 0.0).unwrap());
+
         if self.should_render {
             self.should_render = false;
         } else {
