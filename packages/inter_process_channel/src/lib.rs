@@ -42,14 +42,14 @@ where
 
 struct ReadUntilNewline<R>
 where
-    R: std::io::Read,
+    R: Read,
 {
     reader: R,
 }
 
 impl<R> ReadUntilNewline<R>
 where
-    R: std::io::Read,
+    R: Read,
 {
     pub fn new(reader: R) -> Self {
         ReadUntilNewline { reader }
@@ -58,7 +58,7 @@ where
 
 impl<R> Read for ReadUntilNewline<R>
 where
-    R: std::io::Read,
+    R: Read,
 {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut total_read = 0;
@@ -84,7 +84,7 @@ where
 pub struct Receiver<T, R>
 where
     T: DeserializeOwned,
-    R: std::io::Read,
+    R: Read,
 {
     from: R,
     phantom: std::marker::PhantomData<T>,
@@ -93,7 +93,7 @@ where
 impl<T, R> Receiver<T, R>
 where
     T: DeserializeOwned,
-    R: std::io::Read,
+    R: Read,
 {
     pub fn recv(&mut self) -> Result<T> {
         serde_json::from_reader(ReadUntilNewline::new(&mut self.from))
@@ -103,7 +103,7 @@ where
 pub fn receiver<T, R>(from: R) -> Receiver<T, R>
 where
     T: DeserializeOwned,
-    R: std::io::Read,
+    R: Read,
 {
     Receiver {
         from,
